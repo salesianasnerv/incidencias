@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incidencias | Escuelas Salesianas María Auxiliadora · Nervión (Sevilla)</title>
+  <meta name="description" content="Avisos de averías, mobiliario, mantenimiento, material y cuentas de Microsoft 365 y Google, con seguimiento de cada ticket.">
+  <meta name="theme-color" content="#009abb">
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="favicon-48.png">
+  <link rel="icon" href="favicon.ico" sizes="any">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Incidencias">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+  <!-- Vista previa al compartir (WhatsApp, Teams…) -->
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="es_ES">
+  <meta property="og:site_name" content="Escuelas Salesianas María Auxiliadora">
+  <meta property="og:title" content="Incidencias | Escuelas Salesianas María Auxiliadora · Nervión (Sevilla)">
+  <meta name="twitter:title" content="Incidencias | Escuelas Salesianas María Auxiliadora · Nervión (Sevilla)">
+  <meta property="og:description" content="Avisos de averías, mobiliario, mantenimiento, material y cuentas, con seguimiento de cada ticket.">
+  <meta property="og:url" content="https://incidencias-nervion.vercel.app/">
+  <meta property="og:image" content="https://incidencias-nervion.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Incidencias | Escuelas Salesianas María Auxiliadora · Nervión (Sevilla)">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://incidencias-nervion.vercel.app/og-image.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="incidencias.css">
+</head>
+<body>
+  <header class="top solo-logo">
+    <div class="marca"><img class="logo" src="logo.svg" alt="Salesianas Nervión"></div>
+  </header>
+  <div class="franja">
+    <span class="quien" data-curso>Curso 2026-2027</span>
+    <div class="franja-acc">
+      <button type="button" class="franja-btn instalar" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Instalar como app</button>
+      <button type="button" class="franja-btn" id="btnAdminFranja"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Administración</button>
+    </div>
+  </div>
+  <script>/* Curso escolar: cambia solo cada 1 de septiembre */document.querySelectorAll("[data-curso]").forEach(function(e){var d=new Date(),y=d.getFullYear()-(d.getMonth()<8?1:0);e.textContent="Curso "+y+"-"+(y+1);});</script>
+  <div class="sesion" id="sesion" hidden>
+    <span class="sesion-nombre"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4-6 8-6s7 2 8 6"/></svg><span id="usuario"></span><span class="rol-etq" id="rolEtq"></span></span>
+    <button type="button" class="sesion-salir" id="btnSalir" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></svg>Salir</button>
+  </div>
+  <section class="presenta">
+    <div class="presenta-sup"><div class="cartel" role="navigation" aria-label="Estás en"><a href="https://claustro-utilidades.vercel.app/" title="Ir al portal de utilidades del profesorado"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-7 9 7M5 10v10h14V10"/></svg>Utilidades</a><span class="sep" aria-hidden="true">|</span><a href="https://claustro-utilidades.vercel.app/#apGeneral" title="Ir al apartado «General» del portal">General</a></div></div>
+    <div class="presenta-cab">
+      <span class="presenta-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/><path d="M9 9.5v5M13 10h3M13 14h2"/></svg></span>
+      <div>
+        <h1>Incidencias</h1>
+        <p>Avisos de averías, mobiliario, mantenimiento, material y cuentas, con el seguimiento de cada ticket.</p>
+      </div>
+    </div>
+    <div class="presenta-info">
+      <details class="info-bloque">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.7 3.1 2.4 3.5 5.2"/></svg><span>Profesorado <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
+        <ul>
+          <li><b>Incidencias:</b> todas las incidencias del colegio, con su estado (abierta, en proceso, pausada o cerrada) y su historial.</li>
+          <li>Si necesitas avisar de algo, díselo a tu coordinador/a: es quien da de alta las incidencias.</li>
+        </ul>
+      </details>
+      <details class="info-bloque">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Coordinación <em class="aviso-etq">Solo cuentas autorizadas</em> <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
+        <ul>
+          <li><b>Nueva incidencia:</b> qué ocurre, dónde (aula o zona), a quién afecta, la prioridad y, si quieres, una foto hecha con el móvil.</li>
+          <li>En tus incidencias puedes añadir comentarios y fotos, y corregirlas mientras siguen abiertas.</li>
+        </ul>
+      </details>
+      <details class="info-bloque">
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Técnicos y administración <em class="aviso-etq">Solo cuentas autorizadas</em> <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
+        <ul>
+          <li><b>Técnicos:</b> cambian el estado, la prioridad y el responsable de cada incidencia y anotan lo que se ha hecho.</li>
+          <li><b>Administración:</b> además, resumen y descarga para Excel, aulas y zonas, y quién es coordinador/a, técnico/a o administrador/a.</li>
+        </ul>
+      </details>
+    </div>
+  </section>
+  <nav id="tabs" hidden>
+    <button data-vista="lista" class="activa">Incidencias <span class="contador" id="nPend" hidden></span></button>
+    <button data-vista="nueva" id="tabNueva" hidden>+ Nueva incidencia</button>
+    <div class="menu-g" id="tabAdmin" hidden>
+      <button type="button" data-menu="admin" aria-haspopup="true">Administración</button>
+      <div class="desplegable">
+        <button type="button" data-admin="resumen" style="--c:#007791"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Resumen y descarga</button>
+        <button type="button" data-admin="ubicaciones" style="--c:#8a9400"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Aulas y zonas</button>
+        <button type="button" data-admin="cuentas" style="--c:#475569"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Coordinación, técnicos y administración</button>
+      </div>
+    </div>
+  </nav>
+
+  <div id="demoAviso" class="demo" hidden>
+    <strong>Modo prueba:</strong> los datos se guardan solo en este navegador.
+    <label class="campo-linea">Entrar como <select id="demoRol">
+      <option value="">Profesor/a</option><option value="coordinador">Coordinador/a</option>
+      <option value="tecnico">Técnico/a</option><option value="admin">Administración</option></select></label> ·
+    <button id="btnEjemplo" class="enlace">Generar incidencias de ejemplo</button> ·
+    <button id="btnVaciar" class="enlace">Borrar todo</button>
+  </div>
+
+  <main>
+    <!-- Acceso -->
+    <section id="vLogin" class="login" hidden>
+      <div class="tarjeta">
+        <h2>Iniciar sesión</h2>
+        <p>Pulsa el botón y entra con tu cuenta del colegio <strong>@salesianas.org</strong>.</p>
+        <button id="btnLogin" class="btn primario grande btn-ms" type="button">
+          <svg viewBox="0 0 21 21" width="20" height="20" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+          Entrar con Microsoft 365
+        </button>
+        <p id="loginError" class="error"></p>
+      </div>
+    </section>
+
+    <!-- Lista de incidencias -->
+    <section id="vLista" hidden>
+      <div class="estados" id="estados" role="tablist" aria-label="Estado"></div>
+      <form id="filtros" class="filtros inc-filtros" onsubmit="return false">
+        <label class="campo crece">Buscar <input type="search" name="q" placeholder="Número, texto, aula, persona…" autocomplete="off"></label>
+        <label class="campo">Categoría <select name="cat"></select></label>
+        <label class="campo">Prioridad <select name="prio"><option value="">Todas</option><option value="alta">Alta / crítica</option><option value="media">Media</option><option value="baja">Baja</option></select></label>
+        <label class="campo">Aula o zona <select name="ubi"></select></label>
+        <div class="filtro-checks">
+          <label class="check" id="fMiasL" hidden><input type="checkbox" name="mias"> Creadas por mí</label>
+          <label class="check" id="fAsigL" hidden><input type="checkbox" name="asig"> Asignadas a mí</label>
+        </div>
+      </form>
+      <div id="lista" class="tickets"></div>
+    </section>
+
+    <!-- Nueva incidencia -->
+    <section id="vNueva" hidden>
+      <form id="fNueva" novalidate>
+        <div class="paso caja">
+          <h2 class="paso-tit"><span>1</span>¿Qué ocurre?</h2>
+          <div id="nCats" class="cats" role="radiogroup" aria-label="Categoría"></div>
+          <div id="nSubs" class="subs" hidden></div>
+          <div id="nElems" class="elems" hidden></div>
+        </div>
+
+        <div class="paso caja" id="pDonde">
+          <h2 class="paso-tit"><span>2</span>¿Dónde?</h2>
+          <p class="ayuda" id="dondeAyuda">Elige el aula o la zona exacta.</p>
+          <div class="fila">
+            <label class="campo crece"><span id="dondeEtq">Aula o zona</span> <select name="ubicacion" id="nUbi"></select></label>
+            <label class="campo crece" id="nUbiOtraL" hidden>¿Cuál? <input name="ubicacionOtra" maxlength="80" placeholder="Ej.: despacho de jefatura de estudios" autocomplete="off"></label>
+          </div>
+        </div>
+
+        <div class="paso caja">
+          <h2 class="paso-tit"><span id="pDetN">3</span>Detalles</h2>
+          <div class="fila">
+            <label class="campo crece"><span id="personaEtq">Persona afectada o de contacto</span>
+              <input name="persona" list="dlPersonal" maxlength="120" placeholder="Nombre y apellidos" autocomplete="off">
+              <small class="pista" id="personaPista">A quién hay que dirigirse o a quién afecta.</small></label>
+          </div>
+          <label class="campo">Resumen <input name="titulo" maxlength="120" placeholder="Ej.: El proyector no enciende" autocomplete="off"></label>
+          <label class="campo">Descripción detallada
+            <textarea name="descripcion" rows="5" maxlength="4000" placeholder="Qué pasa exactamente, desde cuándo, qué se ha probado ya…"></textarea></label>
+
+          <fieldset class="prioridades">
+            <legend>Prioridad</legend>
+            <label class="prio prio-baja"><input type="radio" name="prioridad" value="baja"><b>Baja</b><small>Puede esperar. Ej.: falta un perchero.</small></label>
+            <label class="prio prio-media"><input type="radio" name="prioridad" value="media"><b>Media</b><small>Molesta, pero se puede seguir. Ej.: una persiana atascada.</small></label>
+            <label class="prio prio-alta"><input type="radio" name="prioridad" value="alta"><b>Alta / crítica</b><small>Impide dar clase o hay riesgo. Ej.: proyector roto en plena clase, fuga de agua.</small></label>
+          </fieldset>
+
+          <div class="adjuntar">
+            <label class="btn"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              Hacer foto o adjuntar archivo<input type="file" id="nArchivos" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" hidden></label>
+            <small class="pista">Opcional. Hasta 5 archivos; las fotos se reducen solas.</small>
+            <div id="nPrevia" class="previa"></div>
+          </div>
+        </div>
+
+        <div class="error n-error" id="nError" role="alert"></div>
+        <div class="enviar-barra">
+          <button type="button" class="btn" id="nLimpiar">Empezar de nuevo</button>
+          <button class="btn primario grande" id="nEnviar">Enviar incidencia</button>
+        </div>
+      </form>
+      <datalist id="dlPersonal"></datalist>
+    </section>
+  </main>
+
+  <!-- Administración -->
+  <section id="vAdmin" class="admin" hidden>
+    <section class="caja admin-bloque" data-sec="resumen">
+      <h2>Resumen y descarga</h2>
+      <p class="ayuda">Cuántas incidencias hay de cada tipo y en qué estado, y cuánto se tarda en cerrarlas. Elige las fechas (de creación) y descarga el detalle para Excel.</p>
+      <form id="resFiltros" class="filtros" onsubmit="return false">
+        <label class="campo">Desde <input type="date" name="desde"></label>
+        <label class="campo">Hasta <input type="date" name="hasta"></label>
+      </form>
+      <div class="acciones"><button id="btnCsv" class="btn" type="button">Descargar Excel (CSV)</button></div>
+      <div id="resumen"></div>
+    </section>
+
+    <section class="caja admin-bloque" data-sec="ubicaciones">
+      <h2>Aulas y zonas</h2>
+      <p class="ayuda">Lo que se ofrece en «¿Dónde?» al crear una incidencia. Para retirar un aula sin perder las incidencias que ya la nombran, desactívala.</p>
+      <div class="acciones"><button class="btn primario" id="btnNuevaUbi" type="button">+ Añadir aula o zona</button></div>
+      <div id="admUbis"></div>
+    </section>
+
+    <section class="caja admin-bloque" data-sec="cuentas">
+      <h2>Coordinación, técnicos y administración</h2>
+      <p class="ayuda"><b>Coordinador/a</b>: crea incidencias. <b>Técnico/a</b>: además las atiende (estado, prioridad, responsable). <b>Administración</b>: además ve este menú. El resto del profesorado solo puede verlas.</p>
+      <div id="admCuentas"></div>
+      <form id="admCuentaForm" class="fila alta">
+        <label class="campo crece">Añadir cuenta <input name="email" type="email" placeholder="nombre.apellido@salesianas.org" autocomplete="off" required></label>
+        <label class="campo">Rol <select name="rol"><option value="coordinador">Coordinador/a</option><option value="tecnico">Técnico/a</option><option value="admin">Administración</option></select></label>
+        <button class="btn primario">Añadir</button>
+      </form>
+    </section>
+  </section>
+
+  <footer class="pie">Escuelas Salesianas María Auxiliadora · Nervión (Sevilla)</footer>
+
+  <dialog id="ficha" class="ficha-dlg" aria-labelledby="fichaTit"><div id="fichaCuerpo"></div></dialog>
+  <dialog id="visor" class="visor"><button type="button" class="visor-cerrar" aria-label="Cerrar">×</button><img alt=""></dialog>
+  <dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="teams.js"></script>
+  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
