@@ -1,7 +1,7 @@
 // Permite instalar Incidencias como app y que abra rápido.
 // Los datos siempre se piden a Supabase en el momento; aquí solo se guarda la «carcasa» de la web.
 // Si cambias la lista de archivos, sube también el número de VERSION.
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `incidencias-${VERSION}`;
 const CARCASA = ['./', 'index.html', 'styles.css', 'incidencias.css', 'app.js', 'config.js', 'teams.js', 'manifest.json', 'logo.svg',
   'favicon-32.png', 'favicon-48.png', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];

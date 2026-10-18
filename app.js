@@ -28,11 +28,16 @@
   const tamano = (b) => (b > 1048576 ? (b / 1048576).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
   const norm = (s) => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-  function toast(msg) {
-    const t = $("#toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 3500);
+  // El aviso se mete dentro del diálogo abierto (si lo hay); si no, quedaría tapado por él
+  function toast(msg, ms = 3500) {
+    const t = $("#toast"), abiertos = $$("dialog[open]");
+    (abiertos[abiertos.length - 1] || document.body).appendChild(t);
+    t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), ms);
   }
-  function fallo(e) { console.error(e); toast("Error: " + (e?.message || e)); }
+  function fallo(e) { console.error(e); toast("Error: " + (e?.message || e?.error_description || e), 9000); }
+  window.addEventListener("unhandledrejection", (e) => fallo(e.reason));
+  window.addEventListener("error", (e) => fallo(e.error || e.message));
 
   // ─── Catálogo: categorías, estados, prioridades y roles ───────────────────
   const CATS = CFG.categorias;
