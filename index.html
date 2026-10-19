@@ -91,7 +91,7 @@
     <div class="menu-g" id="tabAdmin" hidden>
       <button type="button" data-menu="admin" aria-haspopup="true">Administración</button>
       <div class="desplegable">
-        <button type="button" data-admin="resumen" style="--c:#007791"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Resumen y descarga</button>
+        <button type="button" data-admin="resumen" style="--c:#007791"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Panel de control</button>
         <button type="button" data-admin="ubicaciones" style="--c:#8a9400"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V8l8-5 8 5v13M9 21v-6h6v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Aulas y zonas</button>
         <button type="button" data-admin="cuentas" style="--c:#475569"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Coordinación, técnicos y administración</button>
       </div>
@@ -102,7 +102,8 @@
     <strong>Modo prueba:</strong> los datos se guardan solo en este navegador.
     <label class="campo-linea">Entrar como <select id="demoRol">
       <option value="">Profesor/a</option><option value="coordinador">Coordinador/a</option>
-      <option value="tecnico">Técnico/a</option><option value="admin">Administración</option></select></label> ·
+      <option value="tecnico:informatica">Técnico/a de informática</option><option value="tecnico:mobiliario,infraestructura">Técnico/a de mantenimiento</option>
+      <option value="admin">Administración</option></select></label> ·
     <button id="btnEjemplo" class="enlace">Generar incidencias de ejemplo</button> ·
     <button id="btnVaciar" class="enlace">Borrar todo</button>
   </div>
@@ -132,6 +133,7 @@
         <div class="filtro-checks">
           <label class="check" id="fMiasL" hidden><input type="checkbox" name="mias"> Creadas por mí</label>
           <label class="check" id="fAsigL" hidden><input type="checkbox" name="asig"> Asignadas a mí</label>
+          <label class="check" id="fCatsL" hidden><input type="checkbox" name="miscat" checked> Solo mis categorías</label>
         </div>
       </form>
       <div id="lista" class="tickets"></div>
@@ -195,14 +197,15 @@
   <!-- Administración -->
   <section id="vAdmin" class="admin" hidden>
     <section class="caja admin-bloque" data-sec="resumen">
-      <h2>Resumen y descarga</h2>
-      <p class="ayuda">Cuántas incidencias hay de cada tipo y en qué estado, y cuánto se tarda en cerrarlas. Elige las fechas (de creación) y descarga el detalle para Excel.</p>
+      <h2>Panel de control</h2>
+      <p class="ayuda">Todas las incidencias de un vistazo. <b>Pulsa cualquier cifra</b> (arriba o en las tablas) para ver esas incidencias debajo; al pulsar una se abre su ficha para gestionarla. Las fechas son las de creación.</p>
       <form id="resFiltros" class="filtros" onsubmit="return false">
         <label class="campo">Desde <input type="date" name="desde"></label>
         <label class="campo">Hasta <input type="date" name="hasta"></label>
       </form>
       <div class="acciones"><button id="btnCsv" class="btn" type="button">Descargar Excel (CSV)</button></div>
       <div id="resumen"></div>
+      <div id="resDetalle" class="res-detalle"></div>
     </section>
 
     <section class="caja admin-bloque" data-sec="ubicaciones">
@@ -214,11 +217,12 @@
 
     <section class="caja admin-bloque" data-sec="cuentas">
       <h2>Coordinación, técnicos y administración</h2>
-      <p class="ayuda"><b>Coordinador/a</b>: crea incidencias. <b>Técnico/a</b>: además las atiende (estado, prioridad, responsable). <b>Administración</b>: además ve este menú. El resto del profesorado solo puede verlas.</p>
+      <p class="ayuda"><b>Coordinador/a</b>: crea incidencias. <b>Técnico/a</b>: además atiende las de <b>sus categorías</b> (estado, prioridad, responsable); márcalas en cada técnico (sin ninguna marcada, atiende todas). <b>Administración</b>: además ve este menú y gestiona todas. El resto del profesorado solo puede verlas.</p>
       <div id="admCuentas"></div>
       <form id="admCuentaForm" class="fila alta">
         <label class="campo crece">Añadir cuenta <input name="email" type="email" placeholder="nombre.apellido@salesianas.org" autocomplete="off" required></label>
         <label class="campo">Rol <select name="rol"><option value="coordinador">Coordinador/a</option><option value="tecnico">Técnico/a</option><option value="admin">Administración</option></select></label>
+        <fieldset class="cats-tec" id="altaCats" hidden><legend>Categorías que atiende</legend></fieldset>
         <button class="btn primario">Añadir</button>
       </form>
     </section>

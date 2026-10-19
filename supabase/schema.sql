@@ -41,6 +41,23 @@ language sql stable as $$
 $$;
 grant execute on function inc_rol(), inc_es_admin(), inc_es_gestor(), inc_puede_crear(), inc_nombre_jwt() to authenticated;
 
+-- Categorías que atiende cada técnico (informática, mantenimiento…). Un técnico sin ninguna atiende todas.
+create table if not exists inc_tecnico_categorias (
+  email      text not null check (email = lower(email)),
+  categoria  text not null check (categoria in ('informatica', 'mobiliario', 'infraestructura', 'fungibles')),
+  primary key (email, categoria)
+);
+-- ¿Atiende esta cuenta las incidencias de esta categoría? (administración, siempre)
+create or replace function inc_gestiona(p_categoria text) returns boolean
+language sql stable security definer set search_path = public as $$
+  select case inc_rol()
+    when 'admin' then true
+    when 'tecnico' then not exists (select 1 from inc_tecnico_categorias where email = email_jwt())
+                     or exists (select 1 from inc_tecnico_categorias where email = email_jwt() and categoria = p_categoria)
+    else false end
+$$;
+grant execute on function inc_gestiona(text) to authenticated;
+
 -- 3. Reglas de «permisos» para las filas de incidencias (se suman a las que ya hay)
 drop policy if exists "incidencias: ver permisos"     on permisos;
 drop policy if exists "incidencias: dar permiso"      on permisos;
@@ -120,8 +137,10 @@ create index if not exists inc_adjuntos_inc_idx on inc_adjuntos (incidencia_id);
 -- 8. Comprobaciones al crear o cambiar una incidencia (no se pueden saltar desde la web)
 create or replace function inc_antes() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare gestor boolean := inc_es_gestor();
+declare gestor boolean;
 begin
+  -- Técnicos: solo las incidencias de sus categorías
+  gestor := inc_gestiona(case when tg_op = 'UPDATE' then old.categoria else new.categoria end);
   new.titulo := trim(new.titulo); new.descripcion := trim(new.descripcion);
   new.persona := trim(new.persona); new.ubicacion := trim(coalesce(new.ubicacion, ''));
 
@@ -139,10 +158,12 @@ begin
         raise exception 'Solo quien la creó puede cambiarla, y solo mientras está abierta';
       end if;
       if new.estado <> old.estado or new.asignado_email is distinct from old.asignado_email then
-        raise exception 'Solo técnicos y administración cambian el estado o el responsable';
+        raise exception 'Solo los técnicos de esta categoría y administración cambian el estado o el responsable';
       end if;
     end if;
     new.creado_por := old.creado_por; new.creado_nombre := old.creado_nombre; new.creado := old.creado;
+    -- El tipo de incidencia solo lo cambia administración
+    if not inc_es_admin() then new.categoria := old.categoria; new.subcategoria := old.subcategoria; end if;
     if new.estado = 'cerrada' and old.estado <> 'cerrada' then new.cerrado := now();
     elsif new.estado <> 'cerrada' then new.cerrado := null;
     else new.cerrado := old.cerrado; end if;
@@ -188,9 +209,12 @@ create trigger inc_incidencias_despues after insert or update on inc_incidencias
   for each row execute function inc_despues();
 
 -- Personas para el responsable (técnicos y administración) y para «persona afectada» (lista del claustro)
-create or replace function inc_gestores() returns table (email text, nombre text, rol text)
+drop function if exists inc_gestores();
+create function inc_gestores() returns table (email text, nombre text, rol text, categorias text[])
 language sql stable security definer set search_path = public as $$
-  select p.email, coalesce(pe.nombre, ''), p.rol from permisos p left join personal pe on pe.email = p.email
+  select p.email, coalesce(pe.nombre, ''), p.rol,
+         coalesce((select array_agg(c.categoria order by c.categoria) from inc_tecnico_categorias c where c.email = p.email), '{}')
+  from permisos p left join personal pe on pe.email = p.email
   where p.web = 'incidencias' and p.rol in ('admin', 'tecnico') and es_profesorado()
   order by 2, 1
 $$;
@@ -205,6 +229,15 @@ alter table inc_ubicaciones enable row level security;
 alter table inc_incidencias enable row level security;
 alter table inc_eventos     enable row level security;
 alter table inc_adjuntos    enable row level security;
+alter table inc_tecnico_categorias enable row level security;
+
+drop policy if exists "ver categorias de tecnicos"       on inc_tecnico_categorias;
+drop policy if exists "gestionar categorias de tecnicos" on inc_tecnico_categorias;
+create policy "ver categorias de tecnicos" on inc_tecnico_categorias for select to authenticated using (es_profesorado());
+create policy "gestionar categorias de tecnicos" on inc_tecnico_categorias for all to authenticated
+  using (inc_es_admin()) with check (inc_es_admin() and es_cuenta_colegio(email));
+grant select, insert, delete on inc_tecnico_categorias to authenticated;
+revoke all on inc_tecnico_categorias from anon;
 
 drop policy if exists "ver ubicaciones"       on inc_ubicaciones;
 drop policy if exists "gestionar ubicaciones" on inc_ubicaciones;
@@ -220,8 +253,8 @@ create policy "ver incidencias" on inc_incidencias for select to authenticated u
 create policy "crear incidencia" on inc_incidencias for insert to authenticated
   with check (inc_puede_crear() and creado_por = email_jwt());
 create policy "cambiar incidencia" on inc_incidencias for update to authenticated
-  using (inc_es_gestor() or (creado_por = email_jwt() and estado = 'abierta'))
-  with check (inc_es_gestor() or creado_por = email_jwt());
+  using (inc_gestiona(categoria) or (creado_por = email_jwt() and estado = 'abierta'))
+  with check (inc_gestiona(categoria) or creado_por = email_jwt());
 create policy "borrar incidencia" on inc_incidencias for delete to authenticated using (inc_es_admin());
 
 drop policy if exists "ver historial"     on inc_eventos;
@@ -230,7 +263,7 @@ drop policy if exists "borrar comentario" on inc_eventos;
 create policy "ver historial" on inc_eventos for select to authenticated using (es_profesorado());
 create policy "comentar" on inc_eventos for insert to authenticated
   with check (tipo = 'comentario' and autor = email_jwt() and length(trim(texto)) > 0
-    and (inc_es_gestor() or exists (select 1 from inc_incidencias i where i.id = incidencia_id and i.creado_por = email_jwt())));
+    and exists (select 1 from inc_incidencias i where i.id = incidencia_id and (inc_gestiona(i.categoria) or i.creado_por = email_jwt())));
 create policy "borrar comentario" on inc_eventos for delete to authenticated
   using (tipo = 'comentario' and (inc_es_admin() or autor = email_jwt()));
 
@@ -240,7 +273,7 @@ drop policy if exists "borrar adjunto"  on inc_adjuntos;
 create policy "ver adjuntos" on inc_adjuntos for select to authenticated using (es_profesorado());
 create policy "subir adjunto" on inc_adjuntos for insert to authenticated
   with check (creado_por = email_jwt()
-    and (inc_es_gestor() or exists (select 1 from inc_incidencias i where i.id = incidencia_id and i.creado_por = email_jwt())));
+    and exists (select 1 from inc_incidencias i where i.id = incidencia_id and (inc_gestiona(i.categoria) or i.creado_por = email_jwt())));
 create policy "borrar adjunto" on inc_adjuntos for delete to authenticated
   using (inc_es_admin() or creado_por = email_jwt());
 

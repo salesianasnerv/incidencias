@@ -145,6 +145,25 @@ textarea { font: inherit; }
 .visor-cerrar { position: absolute; top: -12px; right: -12px; background: #fff; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 
 /* Administración */
+.kpi-btn { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.kpi-btn:hover { border-color: var(--azul); }
+.kpi-btn.sel { border-color: var(--azul); box-shadow: 0 0 0 2px var(--azul) inset; }
+.kpi-aviso b { color: var(--aviso); }
+.cifra { font: inherit; font-variant-numeric: tabular-nums; border: 0; background: none; color: var(--azul-oscuro); cursor: pointer;
+  padding: 2px 8px; border-radius: 6px; text-decoration: underline; text-underline-offset: 3px; }
+.cifra.total { font-weight: 700; }
+.cifra:hover { background: var(--e-abierta-bg); }
+.cifra.sel { background: var(--azul); color: #fff; text-decoration: none; }
+.res-detalle:empty { display: none; }
+.res-detalle { margin-top: 18px; border-top: 3px solid var(--azul); padding-top: 12px; scroll-margin-top: 60px; }
+.res-det-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.res-det-cab h3 { margin: 0; font-size: 17px; }
+.cats-tec { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; flex-basis: 100%; }
+.cats-tec legend { font-size: 13px; color: var(--suave); font-weight: 600; padding: 0; margin-bottom: 4px; }
+.cats-fila { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.cat-chk { font-size: 13px; }
+.cat-chk input { accent-color: var(--c); }
+.tabla-cuentas td { vertical-align: middle; }
 .kpi-alta b { color: var(--mal); }
 .tabla-res .fila-cat td { background: var(--neutro-bg); }
 .sangria { padding-left: 14px; display: inline-block; }

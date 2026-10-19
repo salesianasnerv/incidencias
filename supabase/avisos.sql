@@ -2,7 +2,7 @@
 -- Se ejecuta en el Supabase común «Acceso Microsoft 365», en SQL Editor, DESPUÉS de schema.sql.
 -- Cada vez que se apunta algo en el historial (inc_eventos), la base de datos decide a quién avisar
 -- y llama a la función de Vercel «api/notificar.js», que envía el correo con Resend:
---   · incidencia nueva       → técnicos y administración de incidencias (permisos web = 'incidencias')
+--   · incidencia nueva       → administración y los técnicos de esa categoría (permisos web = 'incidencias')
 --   · cambio de estado        → quien la creó
 --   · comentario              → quien la creó
 -- A quien hace el cambio no se le avisa de lo suyo. Si el aviso falla, la incidencia se guarda igual.
@@ -28,8 +28,12 @@ on conflict (clave) do nothing;
 create or replace function inc_avisos_destinatarios(ev inc_eventos) returns text[]
 language sql stable security definer set search_path = public as $$
   select coalesce(array_agg(distinct d.email order by d.email), '{}') from (
-    select lower(p.email) as email from permisos p
-     where ev.tipo = 'creada' and p.web = 'incidencias' and p.rol in ('tecnico', 'admin')
+    -- Incidencia nueva: administración y los técnicos de esa categoría (o los que no tienen categorías: atienden todas)
+    select lower(p.email) as email from permisos p, inc_incidencias i
+     where ev.tipo = 'creada' and i.id = ev.incidencia_id and p.web = 'incidencias'
+       and (p.rol = 'admin'
+            or (p.rol = 'tecnico' and (not exists (select 1 from inc_tecnico_categorias c where c.email = p.email)
+                                       or exists (select 1 from inc_tecnico_categorias c where c.email = p.email and c.categoria = i.categoria))))
     union
     select lower(i.creado_por) from inc_incidencias i
      where ev.tipo in ('estado', 'comentario') and i.id = ev.incidencia_id
