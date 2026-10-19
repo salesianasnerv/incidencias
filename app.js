@@ -1,7 +1,8 @@
 (() => {
   "use strict";
   const CFG = window.APP_CONFIG;
-  const DEMO = !CFG.supabaseUrl;
+  // Modo prueba: sin Supabase en config.js, o con «?prueba» en la dirección (los datos se quedan en este navegador)
+  const DEMO = !CFG.supabaseUrl || new URLSearchParams(location.search).has("prueba");
 
   // ─── Utilidades ────────────────────────────────────────────────────────────
   const $ = (s, el = document) => el.querySelector(s);
@@ -61,11 +62,18 @@
   const icono = (n, tam = "") => `<svg class="ico ${tam}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONOS[n] || ICONOS.caja}</svg>`;
   const pillEstado = (e) => `<span class="est est-${e}">${ESTADOS[e] || e}</span>`;
   const pillPrio = (p) => `<span class="pri pri-${p}">${PRIOS[p] || p}</span>`;
+  // Urgencia: la que indicó quien la creó. Prioridad: la asignada por técnicos o administración.
+  const urg = (i) => i.urgencia || i.prioridad;
+  const pillUrg = (i) => (urg(i) !== i.prioridad ? `<span class="t-urg" title="Urgencia que indicó quien la creó">indicó: ${PRIOS[urg(i)]}</span>` : "");
 
   // ─── Estado ──────────────────────────────────────────────────────────────
   const S = { user: null, ubis: [], incs: [], gestores: [], personal: [], estado: "pend", vista: null, admSec: null, nueva: null, ficha: null };
   const puedeCrear = () => ["coordinador", "tecnico", "admin"].includes(S.user?.rol);
   const esGestor = () => ["tecnico", "admin"].includes(S.user?.rol);
+  // Técnicos: atienden solo sus categorías (sin ninguna marcada, todas). Administración, todo.
+  const atiende = (g, c) => g.rol === "admin" || (g.rol === "tecnico" && (!g.categorias?.length || g.categorias.includes(c)));
+  const gestiona = (i) => !!S.user && atiende(S.user, i.categoria);
+  const nombresCats = (l) => (l?.length ? l.map((c) => cat(c)?.nombre || c).join(", ") : "todas las categorías");
   const esAdmin = () => S.user?.rol === "admin";
   const formNuevo = () => ({ cat: null, sub: null, elems: new Set(), archivos: [] });
 
@@ -115,13 +123,14 @@
     try { const d = JSON.parse(localStorage.getItem(CLAVE)); if (d) return d; } catch {}
     return { seq: 0, eseq: 0, aseq: 0, incs: [], eventos: [], adjuntos: [], ubis: UBIS_DEMO,
       permisos: [{ email: "demo.prueba@salesianas.org", rol: "admin", creado: new Date().toISOString() },
-        { email: "tecnico.informatica@salesianas.org", rol: "tecnico", creado: new Date().toISOString() }] };
+        { email: "tecnico.informatica@salesianas.org", rol: "tecnico", categorias: ["informatica"], creado: new Date().toISOString() },
+        { email: "tecnico.mantenimiento@salesianas.org", rol: "tecnico", categorias: ["mobiliario", "infraestructura"], creado: new Date().toISOString() }] };
   }
   function demoGuardar(d) {
     try { localStorage.setItem(CLAVE, JSON.stringify(d)); }
     catch { throw new Error("No cabe más en el navegador (modo prueba). Borra datos o usa fotos más pequeñas."); }
   }
-  const demoUser = () => ({ email: "demo.prueba@salesianas.org", nombre: "Persona de prueba", rol: leerRolDemo() || null });
+  const demoUser = () => { const [rol, cats] = leerRolDemo().split(":"); return { email: "demo.prueba@salesianas.org", nombre: "Persona de prueba", rol: rol || null, categorias: cats ? cats.split(",") : [] }; };
   function demoEvento(d, incId, tipo, extra = {}, cuando = new Date().toISOString(), autor = demoUser()) {
     const ev = { id: ++d.eseq, incidencia_id: incId, tipo, texto: "", de: null, a: null, autor: autor.email, autor_nombre: autor.nombre, creado: cuando, ...extra };
     d.eventos.push(ev); return ev;
@@ -136,20 +145,25 @@
     async crear(f) {
       if (!puedeCrear()) throw new Error("Solo coordinación, técnicos y administración pueden crear incidencias");
       const d = demoLeer(), u = demoUser(), ahora = new Date().toISOString();
-      const inc = { ...f, id: ++d.seq, estado: "abierta", creado_por: u.email, creado_nombre: u.nombre, creado: ahora, actualizado: ahora, cerrado: null,
-        asignado_email: esGestor() ? f.asignado_email || null : null, asignado_nombre: esGestor() ? f.asignado_nombre || null : null };
+      const inc = { ...f, prioridad: f.urgencia, id: ++d.seq, estado: "abierta", creado_por: u.email, creado_nombre: u.nombre, creado: ahora, actualizado: ahora, cerrado: null,
+        asignado_email: gestiona(f) ? f.asignado_email || null : null, asignado_nombre: gestiona(f) ? f.asignado_nombre || null : null };
       d.incs.push(inc); demoEvento(d, inc.id, "creada"); demoGuardar(d); return inc;
     },
     async actualizar(id, c) {
       const d = demoLeer(), i = d.incs.find((x) => x.id === id);
-      if (!esGestor() && (i.creado_por !== S.user.email || i.estado !== "abierta")) throw new Error("Solo quien la creó puede cambiarla, y solo mientras está abierta");
+      if (!gestiona(i) && (i.creado_por !== S.user.email || i.estado !== "abierta")) throw new Error("Solo quien la creó puede cambiarla, y solo mientras está abierta");
       const antes = { ...i };
+      c = { ...c };
+      if (gestiona(i)) delete c.urgencia;
+      else { delete c.prioridad; if (c.urgencia) c.prioridad = urg(antes) === antes.prioridad ? c.urgencia : antes.prioridad; }
       Object.assign(i, c, { actualizado: new Date().toISOString() });
+      if (!i.urgencia) i.urgencia = antes.prioridad;
       if (i.estado === "cerrada" && antes.estado !== "cerrada") i.cerrado = i.actualizado;
       if (i.estado !== "cerrada") i.cerrado = null;
       if (!i.asignado_email) i.asignado_nombre = null;
       if (i.estado !== antes.estado) demoEvento(d, id, "estado", { de: antes.estado, a: i.estado });
       if (i.prioridad !== antes.prioridad) demoEvento(d, id, "prioridad", { de: antes.prioridad, a: i.prioridad });
+      if (urg(i) !== urg(antes)) demoEvento(d, id, "urgencia", { de: urg(antes), a: urg(i) });
       if ((i.asignado_email || null) !== (antes.asignado_email || null)) demoEvento(d, id, "asignacion", { de: antes.asignado_nombre, a: i.asignado_nombre });
       demoGuardar(d); return i;
     },
@@ -166,7 +180,7 @@
     },
     async urlAdjunto(a) { return a.datos; },
     async borrarAdjunto(a) { const d = demoLeer(); d.adjuntos = d.adjuntos.filter((x) => x.id !== a.id); demoGuardar(d); },
-    async gestores() { return demoLeer().permisos.filter((p) => p.rol !== "coordinador").map((p) => ({ email: p.email, nombre: p.email === demoUser().email ? demoUser().nombre : nombreDeEmail(p.email), rol: p.rol })); },
+    async gestores() { return demoLeer().permisos.filter((p) => p.rol !== "coordinador").map((p) => ({ email: p.email, nombre: p.email === demoUser().email ? demoUser().nombre : nombreDeEmail(p.email), rol: p.rol, categorias: p.categorias || [] })); },
     async personal() { return ["Ana Felipe", "Ángela Rodríguez", "Laura Ramos", "Mario Espejo", "Rocío Cano"].map((n) => ({ nombre: n, email: "" })); },
     async guardarUbi(u) {
       const d = demoLeer();
@@ -180,7 +194,8 @@
       const d = demoLeer(); if (d.permisos.some((p) => p.email === email)) throw new Error("Esa cuenta ya tiene un rol");
       d.permisos.push({ email, rol, creado: new Date().toISOString() }); demoGuardar(d);
     },
-    async cambiarRol(email, rol) { const d = demoLeer(); d.permisos.find((p) => p.email === email).rol = rol; demoGuardar(d); },
+    async cambiarRol(email, rol) { const d = demoLeer(), p = d.permisos.find((x) => x.email === email); p.rol = rol; if (rol !== "tecnico") p.categorias = []; demoGuardar(d); },
+    async ponerCategorias(email, cats) { const d = demoLeer(); d.permisos.find((p) => p.email === email).categorias = cats; demoGuardar(d); },
     async delCuenta(email) { const d = demoLeer(); d.permisos = d.permisos.filter((p) => p.email !== email); demoGuardar(d); },
   };
 
@@ -197,8 +212,10 @@
       if (!session) return null;
       const u = session.user, email = (u.email || "").toLowerCase();
       if (!cuentaColegio(email)) { await sb.auth.signOut(); throw new Error(`Solo se permite el acceso con cuentas @${CFG.dominio}.`); }
-      const r = await sb.rpc("inc_rol");
-      return { email, nombre: u.user_metadata?.full_name || u.user_metadata?.name || nombreDeEmail(email), rol: r.error ? null : r.data };
+      const r = await sb.rpc("inc_rol"), rol = r.error ? null : r.data;
+      let categorias = [];
+      if (rol === "tecnico") { const c = await sb.from("inc_tecnico_categorias").select("categoria").eq("email", email); categorias = c.error ? [] : c.data.map((x) => x.categoria); }
+      return { email, nombre: u.user_metadata?.full_name || u.user_metadata?.name || nombreDeEmail(email), rol, categorias };
     },
     async login() {
       if (await window.TeamsSSO?.entrar(sb)) return location.reload();
@@ -251,13 +268,24 @@
       ok(r);
     },
     async borrarUbi(id) { ok(await sb.from("inc_ubicaciones").delete().eq("id", id)); },
-    async cuentas() { return ok(await sb.from("permisos").select("email, rol, creado").eq("web", "incidencias").order("email")); },
+    async cuentas() {
+      const [p, c] = await Promise.all([sb.from("permisos").select("email, rol, creado").eq("web", "incidencias").order("email"), sb.from("inc_tecnico_categorias").select("*")]);
+      const cats = c.error ? [] : c.data;
+      return ok(p).map((x) => ({ ...x, categorias: cats.filter((k) => k.email === x.email).map((k) => k.categoria) }));
+    },
+    async ponerCategorias(email, l) {
+      ok(await sb.from("inc_tecnico_categorias").delete().eq("email", email));
+      if (l.length) ok(await sb.from("inc_tecnico_categorias").insert(l.map((categoria) => ({ email, categoria }))));
+    },
     async addCuenta(email, rol) {
       const r = await sb.from("permisos").insert({ email, web: "incidencias", rol });
       if (r.error?.code === "23505") throw new Error("Esa cuenta ya tiene un rol");
       ok(r);
     },
-    async cambiarRol(email, rol) { ok(await sb.from("permisos").update({ rol }).eq("web", "incidencias").eq("email", email)); },
+    async cambiarRol(email, rol) {
+      ok(await sb.from("permisos").update({ rol }).eq("web", "incidencias").eq("email", email));
+      if (rol !== "tecnico") ok(await sb.from("inc_tecnico_categorias").delete().eq("email", email));
+    },
     async delCuenta(email) { ok(await sb.from("permisos").delete().eq("web", "incidencias").eq("email", email)); },
   };
   const api = DEMO ? demoApi : sbApi;
@@ -292,7 +320,7 @@
     if (!S.user) { document.body.classList.add("sin-sesion"); $("#vLogin").hidden = false; return; }
 
     $("#usuario").textContent = S.user.nombre;
-    $("#rolEtq").textContent = ROLES[S.user.rol] || "Profesorado";
+    $("#rolEtq").textContent = (ROLES[S.user.rol] || "Profesorado") + (S.user.rol === "tecnico" && S.user.categorias?.length ? " · " + nombresCats(S.user.categorias) : "");
     $("#sesion").hidden = false;
     $("#btnSalir").hidden = DEMO;
     $("#btnSalir").onclick = () => api.logout();
@@ -304,6 +332,7 @@
     $("#btnAdminFranja").onclick = () => mostrar("admin");
     $("#fMiasL").hidden = !puedeCrear();
     $("#fAsigL").hidden = !esGestor();
+    $("#fCatsL").hidden = !(S.user.rol === "tecnico" && S.user.categorias?.length);
 
     $$("#tabs > button[data-vista]").forEach((b) => (b.onclick = () => mostrar(b.dataset.vista)));
     const menu = $("#tabAdmin");
@@ -382,7 +411,7 @@
     return S.incs.filter((i) =>
       (!fc || i.categoria === fc) && (!fs || i.subcategoria === fs) &&
       (!F.prio.value || i.prioridad === F.prio.value) && (!F.ubi.value || i.ubicacion === F.ubi.value) &&
-      (!F.mias.checked || i.creado_por === S.user.email) && (!F.asig.checked || i.asignado_email === S.user.email) &&
+      (!F.mias.checked || i.creado_por === S.user.email) && (!F.asig.checked || i.asignado_email === S.user.email) && (F.miscat.closest("label").hidden || !F.miscat.checked || gestiona(i)) &&
       (!q || norm([codigo(i.id), i.id, i.titulo, i.descripcion, i.ubicacion, i.persona, i.subcategoria, cat(i.categoria)?.nombre, i.creado_nombre, i.asignado_nombre, ...(i.elementos || [])].join(" ")).includes(q.replace(/^#0*/, ""))));
   }
   function pintarLista() {
@@ -408,7 +437,7 @@
     return `<button type="button" class="ticket ${i.estado === "cerrada" ? "cerrado" : ""}" data-id="${i.id}" style="--c:${c.color}">
       <span class="t-ico">${icono(c.icono)}</span>
       <span class="t-cuerpo">
-        <span class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}<span class="t-fecha">${hace(i.creado)}</span></span>
+        <span class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}${pillUrg(i)}<span class="t-fecha">${hace(i.creado)}</span></span>
         <span class="t-tit">${esc(i.titulo)}</span>
         <span class="t-meta"><span>${esc(i.subcategoria)}${i.elementos?.length ? " · " + esc(i.elementos.join(", ")) : ""}</span>
           ${i.ubicacion ? `<span>${icono("lugar")}${esc(i.ubicacion)}</span>` : ""}<span>${icono("persona")}${esc(i.persona)}</span></span>
@@ -440,8 +469,8 @@
       if (location.hash !== "#inc-" + id) history.replaceState(null, "", "#inc-" + id);
     } catch (e) { fallo(e); }
   }
-  const puedeComentar = (i) => esGestor() || i.creado_por === S.user.email;
-  const puedeEditar = (i) => esGestor() || (i.creado_por === S.user.email && i.estado === "abierta");
+  const puedeComentar = (i) => gestiona(i) || i.creado_por === S.user.email;
+  const puedeEditar = (i) => gestiona(i) || (i.creado_por === S.user.email && i.estado === "abierta");
   async function htmlAdjuntos(lista) {
     if (!lista.length) return "";
     const items = await Promise.all(lista.map(async (a) => {
@@ -456,7 +485,8 @@
   function textoEvento(e) {
     if (e.tipo === "creada") return "creó la incidencia";
     if (e.tipo === "estado") return `cambió el estado: ${ESTADOS[e.de] || e.de} → <b>${ESTADOS[e.a] || e.a}</b>`;
-    if (e.tipo === "prioridad") return `cambió la prioridad: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
+    if (e.tipo === "prioridad") return `cambió la prioridad asignada: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
+    if (e.tipo === "urgencia") return `corrigió la urgencia: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
     if (e.tipo === "asignacion") return e.a ? `asignó la incidencia a <b>${esc(e.a)}</b>` : `quitó el responsable${e.de ? ` (${esc(e.de)})` : ""}`;
     return "comentó";
   }
@@ -467,20 +497,20 @@
       <span class="ev-cab"><b>${esc(e.autor_nombre || nombreDeEmail(e.autor))}</b> ${textoEvento(e)} <time title="${fechaHora(e.creado)}">${hace(e.creado)}</time>
       ${e.tipo === "comentario" && (esAdmin() || e.autor === S.user.email) ? `<button type="button" class="enlace mini-enl" data-borrar-ev="${e.id}">Borrar</button>` : ""}</span>
       ${e.texto ? `<p class="ev-txt">${esc(e.texto)}</p>` : ""}${await htmlAdjuntos(adjuntos.filter((a) => a.evento_id === e.id))}</li>`));
-    const gest = esGestor() ? `<div class="gestion">
+    const gest = gestiona(i) ? `<div class="gestion">
         <label class="campo">Estado <select name="estado">${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${k === i.estado ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label class="campo">Prioridad <select name="prioridad">${Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="campo">Prioridad asignada <select name="prioridad">${Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label class="campo crece">Responsable <select name="asignado">${opcionesGestores(i)}</select></label>
         ${i.asignado_email !== S.user.email ? `<button type="button" class="btn mini" data-asignarme>Asignármela</button>` : ""}
       </div>` : "";
     const comentar = puedeComentar(i) ? `<form class="comentar" id="fComentar">
-        <h3 class="sub">${esGestor() ? "Atender la incidencia" : "Añadir información"}</h3>
+        <h3 class="sub">${gestiona(i) ? "Atender la incidencia" : "Añadir información"}</h3>
         ${gest}
-        <label class="campo">Comentario <textarea name="texto" rows="3" maxlength="4000" placeholder="${esGestor() ? "Qué se ha hecho, qué falta, piezas pedidas… (recomendable al cerrar)" : "Más detalles para quien la atiende"}"></textarea></label>
+        <label class="campo">Comentario <textarea name="texto" rows="3" maxlength="4000" placeholder="${gestiona(i) ? "Qué se ha hecho, qué falta, piezas pedidas… (recomendable al cerrar)" : "Más detalles para quien la atiende"}"></textarea></label>
         <div class="comentar-pie">
           <label class="btn">${icono("clip")} Foto o archivo<input type="file" id="cArchivos" multiple accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" hidden></label>
           <span class="crece"></span>
-          <button class="btn primario" id="cGuardar">${esGestor() ? "Guardar" : "Añadir comentario"}</button>
+          <button class="btn primario" id="cGuardar">${gestiona(i) ? "Guardar" : "Añadir comentario"}</button>
         </div>
         <div id="cPrevia" class="previa"></div>
       </form>` : "";
@@ -488,7 +518,7 @@
     $("#fichaCuerpo").innerHTML = `
       <div class="f-cab" style="--c:${c.color}">
         <span class="t-ico">${icono(c.icono)}</span>
-        <div class="crece"><div class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}</div>
+        <div class="crece"><div class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}${pillUrg(i)}</div>
           <h2 id="fichaTit">${esc(i.titulo)}</h2></div>
         <button type="button" class="f-cerrar" data-cerrar aria-label="Cerrar">×</button>
       </div>
@@ -498,12 +528,16 @@
         <div><dt>Persona</dt><dd>${esc(i.persona)}</dd></div>
         <div><dt>Creada</dt><dd>${fechaHora(i.creado)}<br><small>por ${esc(i.creado_nombre || nombreDeEmail(i.creado_por))}</small></dd></div>
         <div><dt>Responsable</dt><dd>${esc(i.asignado_nombre) || "Sin asignar"}</dd></div>
+        <div><dt>Urgencia indicada</dt><dd>${PRIOS[urg(i)]}<br><small>por quien la creó</small></dd></div>
+        <div><dt>Prioridad asignada</dt><dd>${PRIOS[i.prioridad]}<br><small>${urg(i) !== i.prioridad ? "cambiada por técnicos o administración" : "la misma que la urgencia"}</small></dd></div>
         ${i.cerrado ? `<div><dt>Cerrada</dt><dd>${fechaHora(i.cerrado)}</dd></div>` : ""}
       </dl>
       <p class="f-desc">${esc(i.descripcion)}</p>
       ${await htmlAdjuntos(iniciales)}
       <div class="f-acc">
         <button type="button" class="btn mini" data-copiar>Copiar enlace</button>
+        <button type="button" class="btn mini" data-descargar="pdf">Descargar PDF</button>
+        <button type="button" class="btn mini" data-descargar="word">Descargar Word</button>
         ${puedeEditar(i) ? `<button type="button" class="btn mini" data-editar>Corregir datos</button>` : ""}
         ${esAdmin() ? `<button type="button" class="btn mini peligro" data-borrar>Borrar incidencia</button>` : ""}
       </div>
@@ -512,7 +546,8 @@
       <ol class="historial">${hist.reverse().join("")}</ol>`;
   }
   function opcionesGestores(i) {
-    const l = [...S.gestores];
+    // Responsables posibles: administración y los técnicos de esta categoría
+    const l = S.gestores.filter((g) => atiende(g, i.categoria));
     if (i.asignado_email && !l.some((g) => g.email === i.asignado_email)) l.push({ email: i.asignado_email, nombre: i.asignado_nombre });
     return `<option value="">Sin asignar</option>` + l.map((g) => `<option value="${esc(g.email)}" ${g.email === i.asignado_email ? "selected" : ""}>${esc(nombreGestor(g))}</option>`).join("");
   }
@@ -524,7 +559,8 @@
     if (d.cerrar != null) return $("#ficha").close();
     if (d.ver) { const v = $("#visor"); $("img", v).src = d.ver; return v.showModal(); }
     if (d.quitarAdj != null) { S.ficha.archivos.splice(+d.quitarAdj, 1); return pintarPrevia($("#cPrevia"), S.ficha.archivos); }
-    if (d.asignarme != null) { const s = $("#fComentar").asignado; if (!S.gestores.some((g) => g.email === S.user.email)) S.gestores.push({ email: S.user.email, nombre: S.user.nombre }); s.innerHTML = opcionesGestores(i); s.value = S.user.email; if (s.form.estado.value === "abierta") s.form.estado.value = "en_proceso"; return; }
+    if (d.asignarme != null) { const s = $("#fComentar").asignado; if (!S.gestores.some((g) => g.email === S.user.email)) S.gestores.push({ email: S.user.email, nombre: S.user.nombre, rol: S.user.rol, categorias: S.user.categorias }); s.innerHTML = opcionesGestores(i); s.value = S.user.email; if (s.form.estado.value === "abierta") s.form.estado.value = "en_proceso"; return; }
+    if (d.descargar) return descargarFicha(d.descargar);
     if (d.copiar != null) {
       const url = location.origin + location.pathname + "#inc-" + i.id;
       try { await navigator.clipboard.writeText(url); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", url); }
@@ -553,7 +589,7 @@
   async function guardarFicha() {
     const f = $("#fComentar"), i = S.ficha.inc, texto = f.texto.value.trim(), btn = $("#cGuardar");
     const cambios = {};
-    if (esGestor()) {
+    if (gestiona(i)) {
       if (f.estado.value !== i.estado) cambios.estado = f.estado.value;
       if (f.prioridad.value !== i.prioridad) cambios.prioridad = f.prioridad.value;
       if ((f.asignado.value || null) !== (i.asignado_email || null)) {
@@ -570,7 +606,7 @@
       if (texto || S.ficha.archivos.length) ev = await api.comentar(i.id, texto || "Adjunta archivos.");
       for (const [n, a] of S.ficha.archivos.entries()) { btn.textContent = `Subiendo ${n + 1}/${S.ficha.archivos.length}…`; await api.subir(i.id, a.file, ev?.id); }
       S.incs = await api.incidencias();
-      toast("Guardado"); await abrirFicha(i.id); pintarLista(); contarPendientes();
+      toast("Guardado"); await abrirFicha(i.id); pintarLista(); contarPendientes(); if (S.vista === "admin" && S.admSec === "resumen") pintarResumen();
     } catch (e) { fallo(e); btn.disabled = false; btn.textContent = "Guardar"; }
   }
 
@@ -583,13 +619,13 @@
         <label class="campo crece">Aula o zona <input name="ubicacion" list="dlUbis" maxlength="80" value="${esc(i.ubicacion)}" ${s?.ubicacion === "opcional" ? "" : "required"}></label>
         <label class="campo crece">Persona <input name="persona" list="dlPersonal" maxlength="120" required value="${esc(i.persona)}"></label>
       </div>
-      <label class="campo">Prioridad <select name="prioridad">${Object.entries(PRIOS).map(([k, t]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      ${gestiona(i) ? "" : `<label class="campo">Urgencia <select name="urgencia">${Object.entries(PRIOS).map(([k, t]) => `<option value="${k}" ${k === urg(i) ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
       <datalist id="dlUbis">${S.ubis.filter((u) => u.activo).map((u) => `<option value="${esc(u.nombre)}">`).join("")}</datalist>
       <div class="dlg-botones"><button class="btn" value="" formnovalidate>Cancelar</button><button class="btn primario" value="ok">Guardar</button></div>`);
     if (v !== "ok") return;
     const D = S.dlgDatos;
     try {
-      await api.actualizar(i.id, { titulo: D.titulo.trim(), descripcion: D.descripcion.trim(), ubicacion: D.ubicacion.trim(), persona: D.persona.trim(), prioridad: D.prioridad });
+      await api.actualizar(i.id, { titulo: D.titulo.trim(), descripcion: D.descripcion.trim(), ubicacion: D.ubicacion.trim(), persona: D.persona.trim(), ...(D.urgencia ? { urgencia: D.urgencia } : {}) });
       S.incs = await api.incidencias(); toast("Cambios guardados"); abrirFicha(i.id); pintarLista();
     } catch (e) { fallo(e); }
   }
@@ -652,7 +688,7 @@
     if (!F.persona.value.trim()) marca(F.persona.closest(".campo"), "Indica la persona afectada o de contacto");
     if (F.titulo.value.trim().length < 3) marca(F.titulo.closest(".campo"), "Escribe un resumen");
     if (F.descripcion.value.trim().length < 10) marca(F.descripcion.closest(".campo"), "Describe la incidencia con algo más de detalle");
-    if (!F.prioridad.value) marca($(".prioridades", F), "Elige la prioridad");
+    if (!F.prioridad.value) marca($(".prioridades", F), "Elige la urgencia");
     return { mal, ubi };
   }
   async function enviarNueva() {
@@ -668,7 +704,7 @@
     btn.disabled = true; btn.textContent = "Enviando…";
     try {
       const inc = await api.crear({ categoria: N.cat, subcategoria: N.sub, elementos: [...N.elems], ubicacion: ubi, persona: F.persona.value.trim(),
-        titulo: F.titulo.value.trim(), descripcion: F.descripcion.value.trim(), prioridad: F.prioridad.value });
+        titulo: F.titulo.value.trim(), descripcion: F.descripcion.value.trim(), urgencia: F.prioridad.value });
       for (const [n, a] of N.archivos.entries()) {
         btn.textContent = `Subiendo ${n + 1}/${N.archivos.length}…`;
         try { await api.subir(inc.id, a.file); } catch (e) { fallo(e); }
@@ -686,23 +722,41 @@
     const R = $("#resFiltros");
     R.desde.value = inicioCursoIso(); R.hasta.value = hoyIso();
     R.addEventListener("input", pintarResumen);
-    $("#btnCsv").onclick = descargarCsv;
+    $("#resumen").addEventListener("click", (e) => { const b = e.target.closest("[data-res]"); if (b) pintarDetalleResumen(b.dataset.res); });
+    $("#resDetalle").addEventListener("click", (e) => {
+      if (e.target.closest("[data-res-cerrar]")) { S.resSel = null; $("#resDetalle").innerHTML = ""; $$("#resumen .sel").forEach((x) => x.classList.remove("sel")); return; }
+      const t = e.target.closest("[data-id]"); if (t) abrirFicha(+t.dataset.id);
+    });
+    $("#btnCsv").onclick = dialogoExportar;
     $("#btnNuevaUbi").onclick = () => editarUbi();
     $("#admUbis").addEventListener("click", (e) => { const b = e.target.closest("[data-editar]"); if (b) editarUbi(S.ubis.find((u) => u.id == b.dataset.editar)); });
     $("#admCuentaForm").onsubmit = async (e) => {
       e.preventDefault();
       const email = e.target.email.value.trim().toLowerCase();
       if (!cuentaColegio(email)) return toast(`Debe ser una cuenta @${CFG.dominio}`);
-      try { await api.addCuenta(email, e.target.rol.value); e.target.reset(); toast("Cuenta añadida"); pintarCuentas(); } catch (err) { fallo(err); }
+      const rol = e.target.rol.value, cats = rol === "tecnico" ? $$("#altaCats input:checked").map((x) => x.value) : [];
+      try {
+        await api.addCuenta(email, rol);
+        if (cats.length) await api.ponerCategorias(email, cats);
+        e.target.reset(); $("#altaCats").hidden = true; toast("Cuenta añadida"); S.gestores = await api.gestores(); pintarCuentas();
+      } catch (err) { fallo(err); }
     };
+    $("#altaCats").insertAdjacentHTML("beforeend", casillasCats([]));
+    $("#admCuentaForm").rol.onchange = (e) => ($("#altaCats").hidden = e.target.value !== "tecnico");
     $("#admCuentas").addEventListener("click", async (e) => {
       const b = e.target.closest("[data-quitar]"); if (!b) return;
       if (!(await confirmar("Quitar permiso", `${esc(b.dataset.quitar)} pasará a solo ver las incidencias.`, "Quitar", "aviso"))) return;
       try { await api.delCuenta(b.dataset.quitar); toast("Permiso quitado"); pintarCuentas(); } catch (err) { fallo(err); }
     });
     $("#admCuentas").addEventListener("change", async (e) => {
+      const fila = e.target.closest("[data-cats]");
+      if (fila) {
+        const cats = $$("input:checked", fila).map((x) => x.value);
+        try { await api.ponerCategorias(fila.dataset.cats, cats); toast(cats.length ? "Atiende: " + nombresCats(cats) : "Atiende todas las categorías"); S.gestores = await api.gestores(); pintarCuentas(); } catch (err) { fallo(err); pintarCuentas(); }
+        return;
+      }
       const s = e.target.closest("[data-rol]"); if (!s) return;
-      try { await api.cambiarRol(s.dataset.rol, s.value); toast("Rol cambiado"); S.gestores = await api.gestores(); } catch (err) { fallo(err); pintarCuentas(); }
+      try { await api.cambiarRol(s.dataset.rol, s.value); toast("Rol cambiado"); S.gestores = await api.gestores(); pintarCuentas(); } catch (err) { fallo(err); pintarCuentas(); }
     });
   }
   async function pintarAdmin() {
@@ -713,31 +767,148 @@
     } catch (e) { fallo(e); }
   }
   const enFechas = () => { const R = $("#resFiltros"); return S.incs.filter((i) => (!R.desde.value || isoDia(new Date(i.creado)) >= R.desde.value) && (!R.hasta.value || isoDia(new Date(i.creado)) <= R.hasta.value)); };
+  // Panel de control: cada cifra es un botón que lista esas incidencias debajo (S.resFiltros[clave] = [título, filtro])
   function pintarResumen() {
-    const l = enFechas(), cerradas = l.filter((i) => i.cerrado);
+    const l = enFechas(), cerradas = l.filter((i) => i.cerrado), F = (S.resFiltros = {});
     const dias = cerradas.length ? cerradas.reduce((s, i) => s + (new Date(i.cerrado) - new Date(i.creado)), 0) / cerradas.length / 864e5 : null;
-    const kpi = (n, t, cls = "") => `<div class="kpi ${cls}"><b>${n}</b><span>${t}</span></div>`;
-    const fila = (nombre, f, cls = "") => { const x = l.filter(f); return x.length ? `<tr class="${cls}"><td>${nombre}</td>${Object.keys(ESTADOS).map((k) => `<td class="num">${x.filter((i) => i.estado === k).length || ""}</td>`).join("")}<td class="num"><b>${x.length}</b></td></tr>` : ""; };
+    let n = 0;
+    const boton = (num, titulo, filtro, cls = "") => { const k = "f" + n++; F[k] = [titulo, filtro]; return num ? `<button type="button" class="cifra ${cls}" data-res="${k}" title="Ver: ${esc(titulo)}">${num}</button>` : ""; };
+    const kpi = (titulo, filtro, txt, cls = "") => { const k = "f" + n++; F[k] = [titulo, filtro]; return `<button type="button" class="kpi kpi-btn ${cls}" data-res="${k}"><b>${l.filter(filtro).length}</b><span>${txt}</span></button>`; };
+    const pend = (i) => PENDIENTES.includes(i.estado);
+    const fila = (nombre, titulo, f, cls = "") => {
+      const x = l.filter(f); if (!x.length) return "";
+      return `<tr class="${cls}"><td>${nombre}</td>${Object.entries(ESTADOS).map(([k, v]) => `<td class="num">${boton(x.filter((i) => i.estado === k).length, `${titulo} · ${v}`, (i) => f(i) && i.estado === k)}</td>`).join("")}<td class="num">${boton(x.length, titulo, f, "total")}</td></tr>`;
+    };
+    const cabecera = (t) => `<thead><tr><th>${t}</th>${Object.values(ESTADOS).map((v) => `<th class="num">${v}</th>`).join("")}<th class="num">Total</th></tr></thead>`;
+    const responsables = [...new Set(l.map((i) => i.asignado_nombre || ""))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));
     const porUbi = Object.entries(l.reduce((m, i) => (i.ubicacion && (m[i.ubicacion] = (m[i.ubicacion] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
-    $("#resumen").innerHTML = `<div class="kpis">${kpi(l.length, "incidencias")}${kpi(l.filter((i) => PENDIENTES.includes(i.estado)).length, "pendientes")}
-      ${kpi(l.filter((i) => PENDIENTES.includes(i.estado) && i.prioridad === "alta").length, "pendientes de prioridad alta", "kpi-alta")}
-      ${kpi(cerradas.length, "cerradas")}${kpi(dias == null ? "—" : dias < 1 ? "< 1" : dias.toFixed(1).replace(".", ","), "días de media hasta cerrarse")}</div>
-      <div class="tabla-scroll"><table class="tabla-res"><thead><tr><th>Tipo</th>${Object.values(ESTADOS).map((v) => `<th class="num">${v}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>
-      ${CATS.map((c) => fila(`<b style="color:${c.color}">${esc(c.nombre)}</b>`, (i) => i.categoria === c.id, "fila-cat") + c.subs.map((s) => fila(`<span class="sangria">${esc(s.nombre)}</span>`, (i) => i.categoria === c.id && i.subcategoria === s.nombre)).join("")).join("")}
+    $("#resumen").innerHTML = `<div class="kpis">
+      ${kpi("Todas las incidencias", () => true, "incidencias")}
+      ${kpi("Pendientes", pend, "pendientes")}
+      ${kpi("Pendientes de prioridad alta", (i) => pend(i) && i.prioridad === "alta", "pendientes de prioridad alta", "kpi-alta")}
+      ${kpi("Pendientes sin responsable", (i) => pend(i) && !i.asignado_email, "pendientes sin responsable", "kpi-aviso")}
+      ${kpi("Cerradas", (i) => i.estado === "cerrada", "cerradas")}
+      <div class="kpi"><b>${dias == null ? "—" : dias < 1 ? "< 1" : dias.toFixed(1).replace(".", ",")}</b><span>días de media hasta cerrarse</span></div></div>
+      <h3 class="sub">Por tipo</h3>
+      <div class="tabla-scroll"><table class="tabla-res">${cabecera("Tipo")}<tbody>
+      ${CATS.map((c) => fila(`<b style="color:${c.color}">${esc(c.nombre)}</b>`, c.nombre, (i) => i.categoria === c.id, "fila-cat") + c.subs.map((s) => fila(`<span class="sangria">${esc(s.nombre)}</span>`, s.nombre, (i) => i.categoria === c.id && i.subcategoria === s.nombre)).join("")).join("")}
       </tbody></table></div>
-      ${porUbi.length ? `<h3 class="sub">Aulas y zonas con más incidencias</h3><table>${porUbi.map(([n, k]) => `<tr><td>${esc(n)}</td><td class="num">${k}</td></tr>`).join("")}</table>` : ""}`;
+      <h3 class="sub">Por responsable</h3>
+      <div class="tabla-scroll"><table class="tabla-res">${cabecera("Responsable")}<tbody>
+      ${responsables.map((r) => fila(r ? esc(r) : "<i>Sin asignar</i>", r || "Sin asignar", (i) => (i.asignado_nombre || "") === r)).join("")}
+      </tbody></table></div>
+      ${porUbi.length ? `<h3 class="sub">Aulas y zonas con más incidencias</h3><table class="tabla-res">${porUbi.map(([u, k]) => `<tr><td>${esc(u)}</td><td class="num">${boton(k, u, (i) => i.ubicacion === u, "total")}</td></tr>`).join("")}</table>` : ""}`;
+    // Si había un detalle abierto, se vuelve a pintar con los datos nuevos
+    if (S.resSel && F[S.resSel]?.[0] === S.resTitulo) pintarDetalleResumen(S.resSel); else { S.resSel = null; $("#resDetalle").innerHTML = ""; }
   }
-  function descargarCsv() {
-    const l = enFechas();
-    if (!l.length) return toast("No hay incidencias en esas fechas");
-    const cab = ["Número", "Creada", "Categoría", "Subcategoría", "Elementos", "Aula o zona", "Persona", "Resumen", "Descripción", "Prioridad", "Estado", "Responsable", "Creada por", "Cerrada"];
-    const filas = l.sort((a, b) => a.id - b.id).map((i) => [codigo(i.id), fechaHora(i.creado), cat(i.categoria)?.nombre || i.categoria, i.subcategoria, (i.elementos || []).join(", "), i.ubicacion,
-      i.persona, i.titulo, i.descripcion, PRIOS[i.prioridad], ESTADOS[i.estado], i.asignado_nombre || "", i.creado_nombre || i.creado_por, i.cerrado ? fechaHora(i.cerrado) : ""]);
-    const csv = "﻿" + [cab, ...filas].map((f) => f.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `incidencias-${hoyIso()}.csv`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  function pintarDetalleResumen(k) {
+    const [titulo, filtro] = S.resFiltros[k];
+    S.resSel = k; S.resTitulo = titulo;
+    $$("#resumen [data-res]").forEach((b) => b.classList.toggle("sel", b.dataset.res === k));
+    const l = enFechas().filter(filtro).sort((a, b) => PENDIENTES.includes(a.estado) && PENDIENTES.includes(b.estado) ? PESO[a.prioridad] - PESO[b.prioridad] || b.id - a.id : b.id - a.id);
+    $("#resDetalle").innerHTML = `<div class="res-det-cab"><h3>${esc(titulo)} <span class="contador">${l.length}</span></h3><button type="button" class="btn mini" data-res-cerrar>Ocultar</button></div>
+      <div class="tickets">${l.map(tarjeta).join("") || `<p class="vacio">Ninguna.</p>`}</div>`;
+    $("#resDetalle").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  // ─── Exportar: ficha suelta y, desde el panel, Excel / Word / PDF / CSV (exportar.js) ───
+  const COLUMNAS = [
+    ["numero", "Número", 9, (i) => codigo(i.id), true], ["creada", "Creada", 16, (i) => fechaHora(i.creado), true],
+    ["categoria", "Categoría", 24, (i) => cat(i.categoria)?.nombre || i.categoria, true], ["subcategoria", "Subcategoría", 20, (i) => i.subcategoria, true],
+    ["elementos", "Qué falla", 22, (i) => (i.elementos || []).join(", "), false], ["ubicacion", "Aula o zona", 18, (i) => i.ubicacion, true],
+    ["persona", "Persona", 20, (i) => i.persona, false], ["titulo", "Resumen", 34, (i) => i.titulo, true],
+    ["descripcion", "Descripción", 50, (i) => i.descripcion, false], ["urgencia", "Urgencia indicada", 14, (i) => PRIOS[urg(i)], false], ["prioridad", "Prioridad asignada", 14, (i) => PRIOS[i.prioridad], true],
+    ["estado", "Estado", 15, (i) => ESTADOS[i.estado], true], ["responsable", "Responsable", 20, (i) => i.asignado_nombre || "", true],
+    ["creador", "Creada por", 20, (i) => i.creado_nombre || i.creado_por, false], ["cerrada", "Cerrada", 16, (i) => (i.cerrado ? fechaHora(i.cerrado) : ""), false],
+  ].map(([id, titulo, ancho, valor, porDefecto]) => ({ id, titulo, ancho, valor, porDefecto }));
+  const plano = (html) => { const d = document.createElement("div"); d.innerHTML = html; return d.textContent; };
+  const fechaIso = (iso) => iso.split("-").reverse().join("/");
+
+  async function modeloFicha(i, det) {
+    const c = cat(i.categoria), fotos = det.adjuntos.filter((a) => a.tipo.startsWith("image/")), otros = det.adjuntos.filter((a) => !a.tipo.startsWith("image/"));
+    return {
+      titulo: `${codigo(i.id)} · ${i.titulo}`,
+      etiquetas: `${ESTADOS[i.estado]} · Prioridad asignada: ${PRIOS[i.prioridad].toLowerCase()} · Urgencia indicada: ${PRIOS[urg(i)].toLowerCase()}`,
+      datos: [["Tipo", `${c?.nombre || i.categoria} › ${i.subcategoria}`], ...(i.elementos?.length ? [["Qué falla", i.elementos.join(", ")]] : []),
+        ["Aula o zona", i.ubicacion || "—"], ["Persona", i.persona], ["Creada", `${fechaHora(i.creado)} · ${i.creado_nombre || nombreDeEmail(i.creado_por)}`],
+        ["Responsable", i.asignado_nombre || "Sin asignar"], ["Urgencia indicada", PRIOS[urg(i)]], ["Prioridad asignada", PRIOS[i.prioridad]], ...(i.cerrado ? [["Cerrada", fechaHora(i.cerrado)]] : []),
+        ...(otros.length ? [["Otros archivos", otros.map((a) => a.nombre).join(", ")]] : [])],
+      descripcion: i.descripcion,
+      fotos: (await Promise.all(fotos.map((a) => api.urlAdjunto(a).catch(() => null)))).filter(Boolean),
+      historial: det.eventos.map((e) => { const t = plano(textoEvento(e)); return [fechaHora(e.creado), e.autor_nombre || nombreDeEmail(e.autor), t.charAt(0).toUpperCase() + t.slice(1) + (e.texto ? ": " + e.texto : "")]; }),
+    };
+  }
+  function modeloResumen(l) {
+    const pend = (i) => PENDIENTES.includes(i.estado), cerradas = l.filter((i) => i.cerrado);
+    const dias = cerradas.length ? cerradas.reduce((s, i) => s + (new Date(i.cerrado) - new Date(i.creado)), 0) / cerradas.length / 864e5 : null;
+    const fila = (nombre, f) => { const x = l.filter(f); return x.length ? [nombre, ...Object.keys(ESTADOS).map((k) => x.filter((i) => i.estado === k).length || ""), x.length] : null; };
+    const porTipo = [], destacadas = [];
+    CATS.forEach((c) => { const f = fila(c.nombre, (i) => i.categoria === c.id); if (!f) return; destacadas.push(porTipo.length); porTipo.push(f);
+      c.subs.forEach((s) => { const g = fila("   " + s.nombre, (i) => i.categoria === c.id && i.subcategoria === s.nombre); if (g) porTipo.push(g); }); });
+    const responsables = [...new Set(l.map((i) => i.asignado_nombre || ""))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));
+    const porUbi = Object.entries(l.reduce((m, i) => (i.ubicacion && (m[i.ubicacion] = (m[i.ubicacion] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const cab = (t) => [t, ...Object.values(ESTADOS), "Total"];
+    return {
+      kpis: [[l.length, "incidencias"], [l.filter(pend).length, "pendientes"], [l.filter((i) => pend(i) && i.prioridad === "alta").length, "pendientes de prioridad alta"],
+        [l.filter((i) => pend(i) && !i.asignado_email).length, "pendientes sin responsable"], [cerradas.length, "cerradas"],
+        [dias == null ? "—" : dias < 1 ? "< 1" : dias.toFixed(1).replace(".", ","), "días de media hasta cerrarse"]],
+      tablas: [{ titulo: "Por tipo", cabecera: cab("Tipo"), filas: porTipo, destacadas },
+        { titulo: "Por responsable", cabecera: cab("Responsable"), filas: responsables.map((r) => fila(r || "Sin asignar", (i) => (i.asignado_nombre || "") === r)).filter(Boolean) },
+        ...(porUbi.length ? [{ titulo: "Aulas y zonas con más incidencias", cabecera: ["Aula o zona", "Incidencias"], filas: porUbi }] : [])],
+    };
+  }
+  async function descargarFicha(formato) {
+    const { inc: i } = S.ficha;
+    toast(`Preparando la ficha en ${formato === "pdf" ? "PDF" : "Word"}…`, 60000);
+    try {
+      await Exportar.generar(formato, { archivo: `incidencia-${String(i.id).padStart(4, "0")}`, titulo: "Ficha de incidencia",
+        subtitulo: `Descargada el ${fechaHora(new Date())} por ${S.user.nombre}`, fichas: [await modeloFicha(i, S.ficha)] });
+      toast("Ficha descargada");
+    } catch (e) { fallo(e); }
+  }
+  async function dialogoExportar() {
+    const R = $("#resFiltros"), sel = S.resSel && S.resFiltros?.[S.resSel];
+    const periodo = `creadas del ${fechaIso(R.desde.value || inicioCursoIso())} al ${fechaIso(R.hasta.value || hoyIso())}`;
+    const v = await dialogo(`<h2>Exportar</h2>
+      <fieldset class="exp-grupo"><legend>Formato</legend><div class="formatos">
+        ${[["excel", "Excel", "Hojas con filtros"], ["word", "Word", "Documento editable"], ["pdf", "PDF", "Para imprimir o enviar"], ["csv", "CSV", "Solo datos, sin formato"]]
+          .map(([val, t, sub], k) => `<label class="formato"><input type="radio" name="formato" value="${val}" ${k ? "" : "checked"}><b>${t}</b><small>${sub}</small></label>`).join("")}</div></fieldset>
+      <fieldset class="exp-grupo"><legend>Qué incidencias</legend>
+        <label class="check"><input type="radio" name="origen" value="fechas" ${sel ? "" : "checked"}> Todas las del panel (${periodo})</label>
+        ${sel ? `<label class="check"><input type="radio" name="origen" value="sel" checked> Solo la lista que estoy viendo: <b>${esc(sel[0])}</b></label>` : ""}
+        <div class="exp-fila"><span>Estado:</span>${Object.entries(ESTADOS).map(([k, t]) => `<label class="check"><input type="checkbox" name="est" value="${k}" checked> ${t}</label>`).join("")}</div>
+        <div class="exp-fila"><span>Tipo:</span>${CATS.map((c) => `<label class="check"><input type="checkbox" name="cat" value="${c.id}" checked> ${esc(c.nombre)}</label>`).join("")}</div>
+      </fieldset>
+      <fieldset class="exp-grupo" data-no-csv><legend>Qué incluir</legend>
+        <label class="check"><input type="checkbox" name="resumen" checked> Resumen con las cifras</label>
+        <label class="check"><input type="checkbox" name="listado" checked> Listado de incidencias</label>
+        <label class="check"><input type="checkbox" name="fichas"> Fichas completas, con historial y fotos (una por página)</label>
+      </fieldset>
+      <fieldset class="exp-grupo" data-cols><legend>Columnas del listado</legend><div class="exp-cols">
+        ${COLUMNAS.map((c) => `<label class="check"><input type="checkbox" name="col" value="${c.id}" ${c.porDefecto ? "checked" : ""}> ${c.titulo}</label>`).join("")}</div></fieldset>
+      <div class="dlg-botones"><button class="btn" value="" formnovalidate>Cancelar</button><button class="btn primario" value="ok">Exportar</button></div>`, (f) => {
+      const ver = () => { const csv = f.formato.value === "csv"; $("[data-no-csv]", f).hidden = csv; $("[data-cols]", f).hidden = !csv && !f.listado.checked; };
+      f.addEventListener("change", ver); ver();
+    });
+    if (v !== "ok") return;
+    const f = $("#dlgForm"), marcados = (n) => $$(`[name=${n}]:checked`, f).map((x) => x.value);
+    const formato = f.formato.value, origen = f.origen.value || "fechas", ests = marcados("est"), cats = marcados("cat");
+    const l = (origen === "sel" ? enFechas().filter(sel[1]) : enFechas()).filter((i) => ests.includes(i.estado) && cats.includes(i.categoria)).sort((a, b) => a.id - b.id);
+    if (!l.length) return toast("No hay incidencias con esa selección");
+    const incluir = { resumen: formato !== "csv" && f.resumen.checked, listado: formato === "csv" || f.listado.checked, fichas: formato !== "csv" && f.fichas.checked };
+    if (!incluir.resumen && !incluir.listado && !incluir.fichas) return toast("Marca qué quieres incluir");
+    const cols = COLUMNAS.filter((c) => marcados("col").includes(c.id));
+    if (incluir.listado && !cols.length) return toast("Marca alguna columna del listado");
+    if (incluir.fichas && l.length > 60 && !(await confirmar("Muchas fichas", `Vas a exportar ${l.length} fichas completas. Puede tardar un poco.`, "Seguir"))) return;
+    toast("Preparando el documento…", 120000);
+    try {
+      const modelo = { archivo: `incidencias-${hoyIso()}`, titulo: "Incidencias",
+        subtitulo: `${origen === "sel" ? sel[0] + " · " : ""}${periodo.charAt(0).toUpperCase() + periodo.slice(1)} · ${l.length} ${l.length === 1 ? "incidencia" : "incidencias"} · exportado el ${fechaHora(new Date())}` };
+      if (incluir.resumen) modelo.resumen = modeloResumen(l);
+      if (incluir.listado) modelo.listado = { columnas: cols.map((c) => ({ titulo: c.titulo, ancho: c.ancho })), filas: l.map((i) => cols.map((c) => c.valor(i) ?? "")) };
+      if (incluir.fichas) { modelo.fichas = []; for (const [n, i] of l.entries()) { toast(`Preparando las fichas (${n + 1}/${l.length})…`, 120000); modelo.fichas.push(await modeloFicha(i, await api.detalle(i.id))); } }
+      await Exportar.generar(formato, modelo);
+      toast("Descargado");
+    } catch (e) { fallo(e); }
   }
   function pintarUbis() {
     const grupos = [...new Set(S.ubis.map((u) => u.grupo || "Sin grupo"))];
@@ -768,17 +939,20 @@
       S.ubis = await api.ubis(); pintarUbis(); toast("Guardado");
     } catch (e) { fallo(e); }
   }
+  const casillasCats = (marcadas, attr = "") => CATS.map((c) => `<label class="check cat-chk" style="--c:${c.color}"><input type="checkbox" value="${c.id}" ${attr} ${marcadas.includes(c.id) ? "checked" : ""}> ${esc(c.nombre)}</label>`).join("");
   async function pintarCuentas() {
     const l = await api.cuentas();
-    $("#admCuentas").innerHTML = `<table>${l.map((a) => `<tr><td>${esc(a.email)}${a.email === S.user.email ? " <small>(tú)</small>" : ""}</td>
+    $("#admCuentas").innerHTML = `<table class="tabla-cuentas">${l.map((a) => `<tr><td>${esc(a.email)}${a.email === S.user.email ? " <small>(tú)</small>" : ""}</td>
       <td>${a.email === S.user.email ? ROLES[a.rol] || a.rol : `<select data-rol="${esc(a.email)}" aria-label="Rol de ${esc(a.email)}">${Object.entries(ROLES).map(([k, t]) => `<option value="${k}" ${k === a.rol ? "selected" : ""}>${t}</option>`).join("")}</select>`}</td>
+      <td>${a.rol === "tecnico" ? `<div class="cats-fila" data-cats="${esc(a.email)}">${casillasCats(a.categorias || [])}</div><small class="pista">${a.categorias?.length ? "" : "Ninguna marcada: atiende todas."}</small>` : a.rol === "admin" ? "<small>Todas</small>" : ""}</td>
       <td class="acciones-fila">${a.email === S.user.email ? "" : `<button class="btn mini peligro" type="button" data-quitar="${esc(a.email)}">Quitar</button>`}</td></tr>`).join("")}</table>`;
   }
 
   // ─── Modo prueba: incidencias de ejemplo ──────────────────────────────────
   async function generarEjemplo() {
     const d = demoLeer(), ahora = Date.now(), h = 36e5;
-    const tec = { email: "tecnico.informatica@salesianas.org", nombre: "Técnico Informática" }, coord = { email: "coord.eso@salesianas.org", nombre: "Coordinación ESO" };
+    const tecInf = { email: "tecnico.informatica@salesianas.org", nombre: "Tecnico Informatica" }, tecMan = { email: "tecnico.mantenimiento@salesianas.org", nombre: "Tecnico Mantenimiento" };
+    const coord = { email: "coord.eso@salesianas.org", nombre: "Coordinación ESO" };
     const ej = [
       ["informatica", "Equipos de aula", ["Proyector"], "2º ESO A", "Ana Felipe", "El proyector no enciende", "Al pulsar el botón se enciende la luz naranja pero no proyecta. Se ha probado con el mando y desenchufando.", "alta", "en_proceso", 3],
       ["informatica", "Microsoft 365", ["Contraseña olvidada"], "", "Mario Espejo", "No puede entrar en su cuenta", "Ha olvidado la contraseña y no tiene configurado el móvil para recuperarla.", "media", "cerrada", 50],
@@ -792,11 +966,13 @@
     ];
     for (const [c, s, el, ubi, per, tit, des, pri, est, horas] of ej) {
       const t = new Date(ahora - horas * h).toISOString(), id = ++d.seq;
-      const asig = est !== "abierta" ? tec : null;
-      d.incs.push({ id, categoria: c, subcategoria: s, elementos: el, ubicacion: ubi, persona: per, titulo: tit, descripcion: des, prioridad: pri, estado: est,
+      const tec = c === "informatica" ? tecInf : tecMan, asig = est !== "abierta" ? tec : null;
+      d.incs.push({ id, categoria: c, subcategoria: s, elementos: el, ubicacion: ubi, persona: per, titulo: tit, descripcion: des, prioridad: pri, urgencia: { "Añadir al equipo de Teams de 3º ESO": "alta", "La wifi se corta en la biblioteca": "alta" }[tit] || pri, estado: est,
         asignado_email: asig?.email || null, asignado_nombre: asig?.nombre || null, creado_por: coord.email, creado_nombre: coord.nombre, creado: t, actualizado: t,
         cerrado: est === "cerrada" ? new Date(ahora - (horas - 20) * h).toISOString() : null });
       demoEvento(d, id, "creada", {}, t, coord);
+      const inc = d.incs[d.incs.length - 1];
+      if (inc.urgencia !== pri) demoEvento(d, id, "prioridad", { de: inc.urgencia, a: pri }, new Date(ahora - (horas - 0.5) * h).toISOString(), tec);
       if (asig) {
         const t2 = new Date(ahora - (horas - 1) * h).toISOString();
         demoEvento(d, id, "asignacion", { a: tec.nombre }, t2, tec);
