@@ -525,6 +525,8 @@
       ${await htmlAdjuntos(iniciales)}
       <div class="f-acc">
         <button type="button" class="btn mini" data-copiar>Copiar enlace</button>
+        <button type="button" class="btn mini" data-descargar="pdf">Descargar PDF</button>
+        <button type="button" class="btn mini" data-descargar="word">Descargar Word</button>
         ${puedeEditar(i) ? `<button type="button" class="btn mini" data-editar>Corregir datos</button>` : ""}
         ${esAdmin() ? `<button type="button" class="btn mini peligro" data-borrar>Borrar incidencia</button>` : ""}
       </div>
@@ -547,6 +549,7 @@
     if (d.ver) { const v = $("#visor"); $("img", v).src = d.ver; return v.showModal(); }
     if (d.quitarAdj != null) { S.ficha.archivos.splice(+d.quitarAdj, 1); return pintarPrevia($("#cPrevia"), S.ficha.archivos); }
     if (d.asignarme != null) { const s = $("#fComentar").asignado; if (!S.gestores.some((g) => g.email === S.user.email)) S.gestores.push({ email: S.user.email, nombre: S.user.nombre, rol: S.user.rol, categorias: S.user.categorias }); s.innerHTML = opcionesGestores(i); s.value = S.user.email; if (s.form.estado.value === "abierta") s.form.estado.value = "en_proceso"; return; }
+    if (d.descargar) return descargarFicha(d.descargar);
     if (d.copiar != null) {
       const url = location.origin + location.pathname + "#inc-" + i.id;
       try { await navigator.clipboard.writeText(url); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", url); }
@@ -713,7 +716,7 @@
       if (e.target.closest("[data-res-cerrar]")) { S.resSel = null; $("#resDetalle").innerHTML = ""; $$("#resumen .sel").forEach((x) => x.classList.remove("sel")); return; }
       const t = e.target.closest("[data-id]"); if (t) abrirFicha(+t.dataset.id);
     });
-    $("#btnCsv").onclick = descargarCsv;
+    $("#btnCsv").onclick = dialogoExportar;
     $("#btnNuevaUbi").onclick = () => editarUbi();
     $("#admUbis").addEventListener("click", (e) => { const b = e.target.closest("[data-editar]"); if (b) editarUbi(S.ubis.find((u) => u.id == b.dataset.editar)); });
     $("#admCuentaForm").onsubmit = async (e) => {
@@ -796,17 +799,105 @@
       <div class="tickets">${l.map(tarjeta).join("") || `<p class="vacio">Ninguna.</p>`}</div>`;
     $("#resDetalle").scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  function descargarCsv() {
-    const l = enFechas();
-    if (!l.length) return toast("No hay incidencias en esas fechas");
-    const cab = ["Número", "Creada", "Categoría", "Subcategoría", "Elementos", "Aula o zona", "Persona", "Resumen", "Descripción", "Prioridad", "Estado", "Responsable", "Creada por", "Cerrada"];
-    const filas = l.sort((a, b) => a.id - b.id).map((i) => [codigo(i.id), fechaHora(i.creado), cat(i.categoria)?.nombre || i.categoria, i.subcategoria, (i.elementos || []).join(", "), i.ubicacion,
-      i.persona, i.titulo, i.descripcion, PRIOS[i.prioridad], ESTADOS[i.estado], i.asignado_nombre || "", i.creado_nombre || i.creado_por, i.cerrado ? fechaHora(i.cerrado) : ""]);
-    const csv = "﻿" + [cab, ...filas].map((f) => f.map((x) => `"${String(x ?? "").replace(/"/g, '""')}"`).join(";")).join("\r\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-    a.download = `incidencias-${hoyIso()}.csv`; a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  // ─── Exportar: ficha suelta y, desde el panel, Excel / Word / PDF / CSV (exportar.js) ───
+  const COLUMNAS = [
+    ["numero", "Número", 9, (i) => codigo(i.id), true], ["creada", "Creada", 16, (i) => fechaHora(i.creado), true],
+    ["categoria", "Categoría", 24, (i) => cat(i.categoria)?.nombre || i.categoria, true], ["subcategoria", "Subcategoría", 20, (i) => i.subcategoria, true],
+    ["elementos", "Qué falla", 22, (i) => (i.elementos || []).join(", "), false], ["ubicacion", "Aula o zona", 18, (i) => i.ubicacion, true],
+    ["persona", "Persona", 20, (i) => i.persona, false], ["titulo", "Resumen", 34, (i) => i.titulo, true],
+    ["descripcion", "Descripción", 50, (i) => i.descripcion, false], ["prioridad", "Prioridad", 13, (i) => PRIOS[i.prioridad], true],
+    ["estado", "Estado", 15, (i) => ESTADOS[i.estado], true], ["responsable", "Responsable", 20, (i) => i.asignado_nombre || "", true],
+    ["creador", "Creada por", 20, (i) => i.creado_nombre || i.creado_por, false], ["cerrada", "Cerrada", 16, (i) => (i.cerrado ? fechaHora(i.cerrado) : ""), false],
+  ].map(([id, titulo, ancho, valor, porDefecto]) => ({ id, titulo, ancho, valor, porDefecto }));
+  const plano = (html) => { const d = document.createElement("div"); d.innerHTML = html; return d.textContent; };
+  const fechaIso = (iso) => iso.split("-").reverse().join("/");
+
+  async function modeloFicha(i, det) {
+    const c = cat(i.categoria), fotos = det.adjuntos.filter((a) => a.tipo.startsWith("image/")), otros = det.adjuntos.filter((a) => !a.tipo.startsWith("image/"));
+    return {
+      titulo: `${codigo(i.id)} · ${i.titulo}`,
+      etiquetas: `${ESTADOS[i.estado]} · Prioridad ${PRIOS[i.prioridad].toLowerCase()}`,
+      datos: [["Tipo", `${c?.nombre || i.categoria} › ${i.subcategoria}`], ...(i.elementos?.length ? [["Qué falla", i.elementos.join(", ")]] : []),
+        ["Aula o zona", i.ubicacion || "—"], ["Persona", i.persona], ["Creada", `${fechaHora(i.creado)} · ${i.creado_nombre || nombreDeEmail(i.creado_por)}`],
+        ["Responsable", i.asignado_nombre || "Sin asignar"], ...(i.cerrado ? [["Cerrada", fechaHora(i.cerrado)]] : []),
+        ...(otros.length ? [["Otros archivos", otros.map((a) => a.nombre).join(", ")]] : [])],
+      descripcion: i.descripcion,
+      fotos: (await Promise.all(fotos.map((a) => api.urlAdjunto(a).catch(() => null)))).filter(Boolean),
+      historial: det.eventos.map((e) => { const t = plano(textoEvento(e)); return [fechaHora(e.creado), e.autor_nombre || nombreDeEmail(e.autor), t.charAt(0).toUpperCase() + t.slice(1) + (e.texto ? ": " + e.texto : "")]; }),
+    };
+  }
+  function modeloResumen(l) {
+    const pend = (i) => PENDIENTES.includes(i.estado), cerradas = l.filter((i) => i.cerrado);
+    const dias = cerradas.length ? cerradas.reduce((s, i) => s + (new Date(i.cerrado) - new Date(i.creado)), 0) / cerradas.length / 864e5 : null;
+    const fila = (nombre, f) => { const x = l.filter(f); return x.length ? [nombre, ...Object.keys(ESTADOS).map((k) => x.filter((i) => i.estado === k).length || ""), x.length] : null; };
+    const porTipo = [], destacadas = [];
+    CATS.forEach((c) => { const f = fila(c.nombre, (i) => i.categoria === c.id); if (!f) return; destacadas.push(porTipo.length); porTipo.push(f);
+      c.subs.forEach((s) => { const g = fila("   " + s.nombre, (i) => i.categoria === c.id && i.subcategoria === s.nombre); if (g) porTipo.push(g); }); });
+    const responsables = [...new Set(l.map((i) => i.asignado_nombre || ""))].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));
+    const porUbi = Object.entries(l.reduce((m, i) => (i.ubicacion && (m[i.ubicacion] = (m[i.ubicacion] || 0) + 1), m), {})).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    const cab = (t) => [t, ...Object.values(ESTADOS), "Total"];
+    return {
+      kpis: [[l.length, "incidencias"], [l.filter(pend).length, "pendientes"], [l.filter((i) => pend(i) && i.prioridad === "alta").length, "pendientes de prioridad alta"],
+        [l.filter((i) => pend(i) && !i.asignado_email).length, "pendientes sin responsable"], [cerradas.length, "cerradas"],
+        [dias == null ? "—" : dias < 1 ? "< 1" : dias.toFixed(1).replace(".", ","), "días de media hasta cerrarse"]],
+      tablas: [{ titulo: "Por tipo", cabecera: cab("Tipo"), filas: porTipo, destacadas },
+        { titulo: "Por responsable", cabecera: cab("Responsable"), filas: responsables.map((r) => fila(r || "Sin asignar", (i) => (i.asignado_nombre || "") === r)).filter(Boolean) },
+        ...(porUbi.length ? [{ titulo: "Aulas y zonas con más incidencias", cabecera: ["Aula o zona", "Incidencias"], filas: porUbi }] : [])],
+    };
+  }
+  async function descargarFicha(formato) {
+    const { inc: i } = S.ficha;
+    toast(`Preparando la ficha en ${formato === "pdf" ? "PDF" : "Word"}…`, 60000);
+    try {
+      await Exportar.generar(formato, { archivo: `incidencia-${String(i.id).padStart(4, "0")}`, titulo: "Ficha de incidencia",
+        subtitulo: `Descargada el ${fechaHora(new Date())} por ${S.user.nombre}`, fichas: [await modeloFicha(i, S.ficha)] });
+      toast("Ficha descargada");
+    } catch (e) { fallo(e); }
+  }
+  async function dialogoExportar() {
+    const R = $("#resFiltros"), sel = S.resSel && S.resFiltros?.[S.resSel];
+    const periodo = `creadas del ${fechaIso(R.desde.value || inicioCursoIso())} al ${fechaIso(R.hasta.value || hoyIso())}`;
+    const v = await dialogo(`<h2>Exportar</h2>
+      <fieldset class="exp-grupo"><legend>Formato</legend><div class="formatos">
+        ${[["excel", "Excel", "Hojas con filtros"], ["word", "Word", "Documento editable"], ["pdf", "PDF", "Para imprimir o enviar"], ["csv", "CSV", "Solo datos, sin formato"]]
+          .map(([val, t, sub], k) => `<label class="formato"><input type="radio" name="formato" value="${val}" ${k ? "" : "checked"}><b>${t}</b><small>${sub}</small></label>`).join("")}</div></fieldset>
+      <fieldset class="exp-grupo"><legend>Qué incidencias</legend>
+        <label class="check"><input type="radio" name="origen" value="fechas" ${sel ? "" : "checked"}> Todas las del panel (${periodo})</label>
+        ${sel ? `<label class="check"><input type="radio" name="origen" value="sel" checked> Solo la lista que estoy viendo: <b>${esc(sel[0])}</b></label>` : ""}
+        <div class="exp-fila"><span>Estado:</span>${Object.entries(ESTADOS).map(([k, t]) => `<label class="check"><input type="checkbox" name="est" value="${k}" checked> ${t}</label>`).join("")}</div>
+        <div class="exp-fila"><span>Tipo:</span>${CATS.map((c) => `<label class="check"><input type="checkbox" name="cat" value="${c.id}" checked> ${esc(c.nombre)}</label>`).join("")}</div>
+      </fieldset>
+      <fieldset class="exp-grupo" data-no-csv><legend>Qué incluir</legend>
+        <label class="check"><input type="checkbox" name="resumen" checked> Resumen con las cifras</label>
+        <label class="check"><input type="checkbox" name="listado" checked> Listado de incidencias</label>
+        <label class="check"><input type="checkbox" name="fichas"> Fichas completas, con historial y fotos (una por página)</label>
+      </fieldset>
+      <fieldset class="exp-grupo" data-cols><legend>Columnas del listado</legend><div class="exp-cols">
+        ${COLUMNAS.map((c) => `<label class="check"><input type="checkbox" name="col" value="${c.id}" ${c.porDefecto ? "checked" : ""}> ${c.titulo}</label>`).join("")}</div></fieldset>
+      <div class="dlg-botones"><button class="btn" value="" formnovalidate>Cancelar</button><button class="btn primario" value="ok">Exportar</button></div>`, (f) => {
+      const ver = () => { const csv = f.formato.value === "csv"; $("[data-no-csv]", f).hidden = csv; $("[data-cols]", f).hidden = !csv && !f.listado.checked; };
+      f.addEventListener("change", ver); ver();
+    });
+    if (v !== "ok") return;
+    const f = $("#dlgForm"), marcados = (n) => $$(`[name=${n}]:checked`, f).map((x) => x.value);
+    const formato = f.formato.value, origen = f.origen.value || "fechas", ests = marcados("est"), cats = marcados("cat");
+    const l = (origen === "sel" ? enFechas().filter(sel[1]) : enFechas()).filter((i) => ests.includes(i.estado) && cats.includes(i.categoria)).sort((a, b) => a.id - b.id);
+    if (!l.length) return toast("No hay incidencias con esa selección");
+    const incluir = { resumen: formato !== "csv" && f.resumen.checked, listado: formato === "csv" || f.listado.checked, fichas: formato !== "csv" && f.fichas.checked };
+    if (!incluir.resumen && !incluir.listado && !incluir.fichas) return toast("Marca qué quieres incluir");
+    const cols = COLUMNAS.filter((c) => marcados("col").includes(c.id));
+    if (incluir.listado && !cols.length) return toast("Marca alguna columna del listado");
+    if (incluir.fichas && l.length > 60 && !(await confirmar("Muchas fichas", `Vas a exportar ${l.length} fichas completas. Puede tardar un poco.`, "Seguir"))) return;
+    toast("Preparando el documento…", 120000);
+    try {
+      const modelo = { archivo: `incidencias-${hoyIso()}`, titulo: "Incidencias",
+        subtitulo: `${origen === "sel" ? sel[0] + " · " : ""}${periodo.charAt(0).toUpperCase() + periodo.slice(1)} · ${l.length} ${l.length === 1 ? "incidencia" : "incidencias"} · exportado el ${fechaHora(new Date())}` };
+      if (incluir.resumen) modelo.resumen = modeloResumen(l);
+      if (incluir.listado) modelo.listado = { columnas: cols.map((c) => ({ titulo: c.titulo, ancho: c.ancho })), filas: l.map((i) => cols.map((c) => c.valor(i) ?? "")) };
+      if (incluir.fichas) { modelo.fichas = []; for (const [n, i] of l.entries()) { toast(`Preparando las fichas (${n + 1}/${l.length})…`, 120000); modelo.fichas.push(await modeloFicha(i, await api.detalle(i.id))); } }
+      await Exportar.generar(formato, modelo);
+      toast("Descargado");
+    } catch (e) { fallo(e); }
   }
   function pintarUbis() {
     const grupos = [...new Set(S.ubis.map((u) => u.grupo || "Sin grupo"))];

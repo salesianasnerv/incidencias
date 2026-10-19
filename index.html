@@ -198,12 +198,12 @@
   <section id="vAdmin" class="admin" hidden>
     <section class="caja admin-bloque" data-sec="resumen">
       <h2>Panel de control</h2>
-      <p class="ayuda">Todas las incidencias de un vistazo. <b>Pulsa cualquier cifra</b> (arriba o en las tablas) para ver esas incidencias debajo; al pulsar una se abre su ficha para gestionarla. Las fechas son las de creación.</p>
+      <p class="ayuda">Todas las incidencias de un vistazo. <b>Pulsa cualquier cifra</b> (arriba o en las tablas) para ver esas incidencias debajo; al pulsar una se abre su ficha para gestionarla. Las fechas son las de creación. Con «Exportar» eliges el formato y qué incluir.</p>
       <form id="resFiltros" class="filtros" onsubmit="return false">
         <label class="campo">Desde <input type="date" name="desde"></label>
         <label class="campo">Hasta <input type="date" name="hasta"></label>
       </form>
-      <div class="acciones"><button id="btnCsv" class="btn" type="button">Descargar Excel (CSV)</button></div>
+      <div class="acciones"><button id="btnCsv" class="btn primario" type="button">Exportar (Excel, Word, PDF…)</button></div>
       <div id="resumen"></div>
       <div id="resDetalle" class="res-detalle"></div>
     </section>
@@ -238,6 +238,7 @@
   <script src="teams.js"></script>
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="exportar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
