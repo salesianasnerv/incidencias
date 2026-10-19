@@ -1,7 +1,8 @@
 (() => {
   "use strict";
   const CFG = window.APP_CONFIG;
-  const DEMO = !CFG.supabaseUrl;
+  // Modo prueba: sin Supabase en config.js, o con «?prueba» en la dirección (los datos se quedan en este navegador)
+  const DEMO = !CFG.supabaseUrl || new URLSearchParams(location.search).has("prueba");
 
   // ─── Utilidades ────────────────────────────────────────────────────────────
   const $ = (s, el = document) => el.querySelector(s);
