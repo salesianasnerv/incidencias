@@ -33,6 +33,7 @@ textarea { font: inherit; }
 .pri { border: 1px solid var(--borde); color: var(--suave); }
 .pri-alta { color: #fff; background: var(--mal); border-color: var(--mal); }
 .pri-media { color: var(--aviso); border-color: currentColor; }
+.t-urg { font-size: 12px; color: var(--suave); font-style: italic; white-space: nowrap; }
 
 /* Pestañas de estado */
 .estados { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }

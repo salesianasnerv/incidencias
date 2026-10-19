@@ -93,7 +93,8 @@ create table if not exists inc_incidencias (
   persona         text not null check (length(trim(persona)) > 0),   -- persona afectada o de contacto
   titulo          text not null check (length(trim(titulo)) between 3 and 120),
   descripcion     text not null check (length(trim(descripcion)) >= 10),
-  prioridad       text not null default 'media' check (prioridad in ('baja', 'media', 'alta')),
+  prioridad       text not null default 'media' check (prioridad in ('baja', 'media', 'alta')),   -- la asignada por técnicos o administración
+  urgencia        text not null default 'media' check (urgencia in ('baja', 'media', 'alta')),    -- la que indicó quien la creó
   estado          text not null default 'abierta' check (estado in ('abierta', 'en_proceso', 'pausada', 'cerrada')),
   asignado_email  text,
   asignado_nombre text,
@@ -103,6 +104,13 @@ create table if not exists inc_incidencias (
   actualizado     timestamptz not null default now(),
   cerrado         timestamptz
 );
+-- Por si la tabla ya existía: urgencia indicada al crear (las que ya había toman su prioridad)
+alter table inc_incidencias add column if not exists urgencia text;
+update inc_incidencias set urgencia = prioridad where urgencia is null;
+alter table inc_incidencias alter column urgencia set default 'media', alter column urgencia set not null;
+do $$ begin
+  alter table inc_incidencias add constraint inc_incidencias_urgencia_check check (urgencia in ('baja', 'media', 'alta'));
+exception when duplicate_object then null; end $$;
 create index if not exists inc_incidencias_estado_idx on inc_incidencias (estado, creado desc);
 create index if not exists inc_incidencias_creador_idx on inc_incidencias (creado_por);
 
@@ -110,7 +118,7 @@ create index if not exists inc_incidencias_creador_idx on inc_incidencias (cread
 create table if not exists inc_eventos (
   id             bigint generated always as identity primary key,
   incidencia_id  bigint not null references inc_incidencias(id) on delete cascade,
-  tipo           text not null default 'comentario' check (tipo in ('creada', 'comentario', 'estado', 'prioridad', 'asignacion')),
+  tipo           text not null default 'comentario' check (tipo in ('creada', 'comentario', 'estado', 'prioridad', 'urgencia', 'asignacion')),
   texto          text not null default '',
   de             text,
   a              text,
@@ -119,6 +127,9 @@ create table if not exists inc_eventos (
   creado         timestamptz not null default now()
 );
 create index if not exists inc_eventos_inc_idx on inc_eventos (incidencia_id, creado);
+-- Por si la tabla ya existía: se admite el apunte «urgencia»
+alter table inc_eventos drop constraint if exists inc_eventos_tipo_check;
+alter table inc_eventos add constraint inc_eventos_tipo_check check (tipo in ('creada', 'comentario', 'estado', 'prioridad', 'urgencia', 'asignacion'));
 
 -- 7. Adjuntos (fotos, PDF…). El archivo está en Storage («inc-adjuntos»); aquí, sus datos.
 create table if not exists inc_adjuntos (
@@ -151,6 +162,8 @@ begin
     new.creado := now();
     new.estado := 'abierta';
     new.cerrado := null;
+    -- La prioridad asignada empieza siendo la urgencia que indica quien la crea
+    new.prioridad := new.urgencia;
     if not gestor then new.asignado_email := null; new.asignado_nombre := null; end if;
   else
     if not gestor then
@@ -162,6 +175,11 @@ begin
       end if;
     end if;
     new.creado_por := old.creado_por; new.creado_nombre := old.creado_nombre; new.creado := old.creado;
+    -- Urgencia: solo la corrige quien la creó (y, si nadie ha reasignado la prioridad, la prioridad la sigue).
+    -- Prioridad asignada: solo técnicos de la categoría y administración.
+    if gestor then new.urgencia := old.urgencia;
+    else new.prioridad := case when old.prioridad = old.urgencia then new.urgencia else old.prioridad end;
+    end if;
     -- El tipo de incidencia solo lo cambia administración
     if not inc_es_admin() then new.categoria := old.categoria; new.subcategoria := old.subcategoria; end if;
     if new.estado = 'cerrada' and old.estado <> 'cerrada' then new.cerrado := now();
@@ -196,6 +214,9 @@ begin
   end if;
   if new.prioridad <> old.prioridad then
     insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre) values (new.id, 'prioridad', old.prioridad, new.prioridad, email_jwt(), inc_nombre_jwt());
+  end if;
+  if new.urgencia <> old.urgencia then
+    insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre) values (new.id, 'urgencia', old.urgencia, new.urgencia, email_jwt(), inc_nombre_jwt());
   end if;
   if new.asignado_email is distinct from old.asignado_email then
     insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre)

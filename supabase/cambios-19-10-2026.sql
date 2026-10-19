@@ -1,8 +1,10 @@
--- ─── Incidencias · técnicos por categoría (cambio del 19-10-2026) ─────────────
--- Se ejecuta UNA vez en el Supabase común «Acceso Microsoft 365», después de schema.sql.
--- Cada técnico atiende solo las categorías que se le marquen en Administración (informática, mobiliario,
--- infraestructura, fungibles). Un técnico sin categorías atiende todas. Solo cambia objetos inc_*:
--- no toca nada de las demás webs. Se puede volver a ejecutar sin perder datos.
+-- ─── Incidencias · cambios del 19-10-2026 ────────────────────────────────────
+-- Se ejecuta UNA vez en el Supabase común «Acceso Microsoft 365» (la base ya tiene schema.sql).
+--   · Técnicos por categoría: cada técnico atiende solo las categorías que se le marquen en
+--     Administración (sin ninguna marcada, todas).
+--   · Urgencia y prioridad por separado: la urgencia la indica quien crea la incidencia; la prioridad
+--     asignada la ponen técnicos o administración.
+-- Solo cambia objetos inc_*: no toca nada de las demás webs. Se puede volver a ejecutar sin perder datos.
 
 begin;
 
@@ -33,7 +35,21 @@ create policy "gestionar categorias de tecnicos" on inc_tecnico_categorias for a
 grant select, insert, delete on inc_tecnico_categorias to authenticated;
 revoke all on inc_tecnico_categorias from anon;
 
--- 2. Comprobaciones al crear o cambiar una incidencia: el técnico solo puede con las de sus categorías
+-- 2. Urgencia indicada al crear
+-- Por si la tabla ya existía: urgencia indicada al crear (las que ya había toman su prioridad)
+alter table inc_incidencias add column if not exists urgencia text;
+update inc_incidencias set urgencia = prioridad where urgencia is null;
+alter table inc_incidencias alter column urgencia set default 'media', alter column urgencia set not null;
+do $$ begin
+  alter table inc_incidencias add constraint inc_incidencias_urgencia_check check (urgencia in ('baja', 'media', 'alta'));
+exception when duplicate_object then null; end $$;
+
+-- Por si la tabla ya existía: se admite el apunte «urgencia»
+alter table inc_eventos drop constraint if exists inc_eventos_tipo_check;
+alter table inc_eventos add constraint inc_eventos_tipo_check check (tipo in ('creada', 'comentario', 'estado', 'prioridad', 'urgencia', 'asignacion'));
+
+
+-- 3. Comprobaciones al crear o cambiar una incidencia, e historial
 create or replace function inc_antes() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare gestor boolean;
@@ -50,6 +66,8 @@ begin
     new.creado := now();
     new.estado := 'abierta';
     new.cerrado := null;
+    -- La prioridad asignada empieza siendo la urgencia que indica quien la crea
+    new.prioridad := new.urgencia;
     if not gestor then new.asignado_email := null; new.asignado_nombre := null; end if;
   else
     if not gestor then
@@ -61,6 +79,11 @@ begin
       end if;
     end if;
     new.creado_por := old.creado_por; new.creado_nombre := old.creado_nombre; new.creado := old.creado;
+    -- Urgencia: solo la corrige quien la creó (y, si nadie ha reasignado la prioridad, la prioridad la sigue).
+    -- Prioridad asignada: solo técnicos de la categoría y administración.
+    if gestor then new.urgencia := old.urgencia;
+    else new.prioridad := case when old.prioridad = old.urgencia then new.urgencia else old.prioridad end;
+    end if;
     -- El tipo de incidencia solo lo cambia administración
     if not inc_es_admin() then new.categoria := old.categoria; new.subcategoria := old.subcategoria; end if;
     if new.estado = 'cerrada' and old.estado <> 'cerrada' then new.cerrado := now();
@@ -78,7 +101,30 @@ begin
   return new;
 end $$;
 
--- 3. Lista de responsables, con las categorías de cada técnico
+create or replace function inc_despues() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    insert into inc_eventos (incidencia_id, tipo, autor, autor_nombre) values (new.id, 'creada', email_jwt(), inc_nombre_jwt());
+    return new;
+  end if;
+  if new.estado <> old.estado then
+    insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre) values (new.id, 'estado', old.estado, new.estado, email_jwt(), inc_nombre_jwt());
+  end if;
+  if new.prioridad <> old.prioridad then
+    insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre) values (new.id, 'prioridad', old.prioridad, new.prioridad, email_jwt(), inc_nombre_jwt());
+  end if;
+  if new.urgencia <> old.urgencia then
+    insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre) values (new.id, 'urgencia', old.urgencia, new.urgencia, email_jwt(), inc_nombre_jwt());
+  end if;
+  if new.asignado_email is distinct from old.asignado_email then
+    insert into inc_eventos (incidencia_id, tipo, de, a, autor, autor_nombre)
+    values (new.id, 'asignacion', old.asignado_nombre, new.asignado_nombre, email_jwt(), inc_nombre_jwt());
+  end if;
+  return new;
+end $$;
+
+-- 4. Lista de responsables, con las categorías de cada técnico
 drop function if exists inc_gestores();
 create function inc_gestores() returns table (email text, nombre text, rol text, categorias text[])
 language sql stable security definer set search_path = public as $$
@@ -90,7 +136,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function inc_gestores() to authenticated;
 
--- 4. Solo cambian estas tres reglas; las demás quedan como estaban
+-- 5. Solo cambian estas tres reglas; las demás quedan como estaban
 drop policy if exists "cambiar incidencia" on inc_incidencias;
 create policy "cambiar incidencia" on inc_incidencias for update to authenticated
   using (inc_gestiona(categoria) or (creado_por = email_jwt() and estado = 'abierta'))
@@ -110,5 +156,7 @@ commit;
 
 notify pgrst, 'reload schema';
 
--- Comprobación: debe salir ok = true y 0 categorías asignadas (se asignan desde la web)
-select exists (select 1 from pg_proc where proname = 'inc_gestiona') as ok, (select count(*) from inc_tecnico_categorias) as categorias_asignadas;
+-- Comprobación: debe salir ok = true, 0 categorías asignadas y tantas urgencias como incidencias
+select exists (select 1 from pg_proc where proname = 'inc_gestiona') as ok,
+       (select count(*) from inc_tecnico_categorias) as categorias_asignadas,
+       (select count(*) from inc_incidencias where urgencia is not null) || ' de ' || (select count(*) from inc_incidencias) as urgencias;

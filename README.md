@@ -30,7 +30,7 @@ Con `supabaseUrl` vacío en `config.js` (como está ahora), la web funciona sin 
 
 Las tablas de esta web empiezan por `inc_` y no tocan las de las demás webs. Los roles van a la lista común `permisos` (web `incidencias`). Como ese proyecto ya tiene el acceso con Microsoft 365, **no hace falta pedir nada a informática**.
 
-1. **Base de datos.** En https://supabase.com, abre el proyecto «Acceso Microsoft 365» → *SQL Editor*. Pega y ejecuta `supabase/schema.sql` (en una base de datos que ya tenía la primera versión, basta con `supabase/tecnicos-por-categoria.sql`). Al final deben salir 3 permisos y 52 aulas y zonas. También crea la carpeta privada de adjuntos (`inc-adjuntos`, en *Storage*). Se puede volver a ejecutar sin perder datos.
+1. **Base de datos.** En https://supabase.com, abre el proyecto «Acceso Microsoft 365» → *SQL Editor*. Pega y ejecuta `supabase/schema.sql` (en una base de datos que ya tenía la primera versión, basta con `supabase/cambios-19-10-2026.sql`). Al final deben salir 3 permisos y 52 aulas y zonas. También crea la carpeta privada de adjuntos (`inc-adjuntos`, en *Storage*). Se puede volver a ejecutar sin perder datos.
 2. **Publicar.** Sube esta carpeta a un repositorio nuevo de GitHub (por ejemplo, `incidencias-nervion`). En https://vercel.com → *Add New → Project*, impórtalo. *Framework Preset*: **Other**, sin comando de compilación.
 3. **Permitir la vuelta tras el login.** En Supabase → *Authentication → URL Configuration → Redirect URLs*, añade `https://incidencias-nervion.vercel.app/**` (con tu dirección). **No cambies la *Site URL***, porque es la del Control de baños.
 4. **Modo real.** `config.js` ya apunta al Supabase común. Para volver al modo prueba, deja vacíos `supabaseUrl` y `supabaseAnonKey`.

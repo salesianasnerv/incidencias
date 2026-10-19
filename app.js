@@ -62,6 +62,9 @@
   const icono = (n, tam = "") => `<svg class="ico ${tam}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICONOS[n] || ICONOS.caja}</svg>`;
   const pillEstado = (e) => `<span class="est est-${e}">${ESTADOS[e] || e}</span>`;
   const pillPrio = (p) => `<span class="pri pri-${p}">${PRIOS[p] || p}</span>`;
+  // Urgencia: la que indicó quien la creó. Prioridad: la asignada por técnicos o administración.
+  const urg = (i) => i.urgencia || i.prioridad;
+  const pillUrg = (i) => (urg(i) !== i.prioridad ? `<span class="t-urg" title="Urgencia que indicó quien la creó">indicó: ${PRIOS[urg(i)]}</span>` : "");
 
   // ─── Estado ──────────────────────────────────────────────────────────────
   const S = { user: null, ubis: [], incs: [], gestores: [], personal: [], estado: "pend", vista: null, admSec: null, nueva: null, ficha: null };
@@ -142,7 +145,7 @@
     async crear(f) {
       if (!puedeCrear()) throw new Error("Solo coordinación, técnicos y administración pueden crear incidencias");
       const d = demoLeer(), u = demoUser(), ahora = new Date().toISOString();
-      const inc = { ...f, id: ++d.seq, estado: "abierta", creado_por: u.email, creado_nombre: u.nombre, creado: ahora, actualizado: ahora, cerrado: null,
+      const inc = { ...f, prioridad: f.urgencia, id: ++d.seq, estado: "abierta", creado_por: u.email, creado_nombre: u.nombre, creado: ahora, actualizado: ahora, cerrado: null,
         asignado_email: gestiona(f) ? f.asignado_email || null : null, asignado_nombre: gestiona(f) ? f.asignado_nombre || null : null };
       d.incs.push(inc); demoEvento(d, inc.id, "creada"); demoGuardar(d); return inc;
     },
@@ -150,12 +153,17 @@
       const d = demoLeer(), i = d.incs.find((x) => x.id === id);
       if (!gestiona(i) && (i.creado_por !== S.user.email || i.estado !== "abierta")) throw new Error("Solo quien la creó puede cambiarla, y solo mientras está abierta");
       const antes = { ...i };
+      c = { ...c };
+      if (gestiona(i)) delete c.urgencia;
+      else { delete c.prioridad; if (c.urgencia) c.prioridad = urg(antes) === antes.prioridad ? c.urgencia : antes.prioridad; }
       Object.assign(i, c, { actualizado: new Date().toISOString() });
+      if (!i.urgencia) i.urgencia = antes.prioridad;
       if (i.estado === "cerrada" && antes.estado !== "cerrada") i.cerrado = i.actualizado;
       if (i.estado !== "cerrada") i.cerrado = null;
       if (!i.asignado_email) i.asignado_nombre = null;
       if (i.estado !== antes.estado) demoEvento(d, id, "estado", { de: antes.estado, a: i.estado });
       if (i.prioridad !== antes.prioridad) demoEvento(d, id, "prioridad", { de: antes.prioridad, a: i.prioridad });
+      if (urg(i) !== urg(antes)) demoEvento(d, id, "urgencia", { de: urg(antes), a: urg(i) });
       if ((i.asignado_email || null) !== (antes.asignado_email || null)) demoEvento(d, id, "asignacion", { de: antes.asignado_nombre, a: i.asignado_nombre });
       demoGuardar(d); return i;
     },
@@ -429,7 +437,7 @@
     return `<button type="button" class="ticket ${i.estado === "cerrada" ? "cerrado" : ""}" data-id="${i.id}" style="--c:${c.color}">
       <span class="t-ico">${icono(c.icono)}</span>
       <span class="t-cuerpo">
-        <span class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}<span class="t-fecha">${hace(i.creado)}</span></span>
+        <span class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}${pillUrg(i)}<span class="t-fecha">${hace(i.creado)}</span></span>
         <span class="t-tit">${esc(i.titulo)}</span>
         <span class="t-meta"><span>${esc(i.subcategoria)}${i.elementos?.length ? " · " + esc(i.elementos.join(", ")) : ""}</span>
           ${i.ubicacion ? `<span>${icono("lugar")}${esc(i.ubicacion)}</span>` : ""}<span>${icono("persona")}${esc(i.persona)}</span></span>
@@ -477,7 +485,8 @@
   function textoEvento(e) {
     if (e.tipo === "creada") return "creó la incidencia";
     if (e.tipo === "estado") return `cambió el estado: ${ESTADOS[e.de] || e.de} → <b>${ESTADOS[e.a] || e.a}</b>`;
-    if (e.tipo === "prioridad") return `cambió la prioridad: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
+    if (e.tipo === "prioridad") return `cambió la prioridad asignada: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
+    if (e.tipo === "urgencia") return `corrigió la urgencia: ${PRIOS[e.de] || e.de} → <b>${PRIOS[e.a] || e.a}</b>`;
     if (e.tipo === "asignacion") return e.a ? `asignó la incidencia a <b>${esc(e.a)}</b>` : `quitó el responsable${e.de ? ` (${esc(e.de)})` : ""}`;
     return "comentó";
   }
@@ -490,7 +499,7 @@
       ${e.texto ? `<p class="ev-txt">${esc(e.texto)}</p>` : ""}${await htmlAdjuntos(adjuntos.filter((a) => a.evento_id === e.id))}</li>`));
     const gest = gestiona(i) ? `<div class="gestion">
         <label class="campo">Estado <select name="estado">${Object.entries(ESTADOS).map(([k, v]) => `<option value="${k}" ${k === i.estado ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label class="campo">Prioridad <select name="prioridad">${Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="campo">Prioridad asignada <select name="prioridad">${Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label class="campo crece">Responsable <select name="asignado">${opcionesGestores(i)}</select></label>
         ${i.asignado_email !== S.user.email ? `<button type="button" class="btn mini" data-asignarme>Asignármela</button>` : ""}
       </div>` : "";
@@ -509,7 +518,7 @@
     $("#fichaCuerpo").innerHTML = `
       <div class="f-cab" style="--c:${c.color}">
         <span class="t-ico">${icono(c.icono)}</span>
-        <div class="crece"><div class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}</div>
+        <div class="crece"><div class="t-sup"><b class="t-cod">${codigo(i.id)}</b>${pillEstado(i.estado)}${pillPrio(i.prioridad)}${pillUrg(i)}</div>
           <h2 id="fichaTit">${esc(i.titulo)}</h2></div>
         <button type="button" class="f-cerrar" data-cerrar aria-label="Cerrar">×</button>
       </div>
@@ -519,6 +528,8 @@
         <div><dt>Persona</dt><dd>${esc(i.persona)}</dd></div>
         <div><dt>Creada</dt><dd>${fechaHora(i.creado)}<br><small>por ${esc(i.creado_nombre || nombreDeEmail(i.creado_por))}</small></dd></div>
         <div><dt>Responsable</dt><dd>${esc(i.asignado_nombre) || "Sin asignar"}</dd></div>
+        <div><dt>Urgencia indicada</dt><dd>${PRIOS[urg(i)]}<br><small>por quien la creó</small></dd></div>
+        <div><dt>Prioridad asignada</dt><dd>${PRIOS[i.prioridad]}<br><small>${urg(i) !== i.prioridad ? "cambiada por técnicos o administración" : "la misma que la urgencia"}</small></dd></div>
         ${i.cerrado ? `<div><dt>Cerrada</dt><dd>${fechaHora(i.cerrado)}</dd></div>` : ""}
       </dl>
       <p class="f-desc">${esc(i.descripcion)}</p>
@@ -608,13 +619,13 @@
         <label class="campo crece">Aula o zona <input name="ubicacion" list="dlUbis" maxlength="80" value="${esc(i.ubicacion)}" ${s?.ubicacion === "opcional" ? "" : "required"}></label>
         <label class="campo crece">Persona <input name="persona" list="dlPersonal" maxlength="120" required value="${esc(i.persona)}"></label>
       </div>
-      <label class="campo">Prioridad <select name="prioridad">${Object.entries(PRIOS).map(([k, t]) => `<option value="${k}" ${k === i.prioridad ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      ${gestiona(i) ? "" : `<label class="campo">Urgencia <select name="urgencia">${Object.entries(PRIOS).map(([k, t]) => `<option value="${k}" ${k === urg(i) ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
       <datalist id="dlUbis">${S.ubis.filter((u) => u.activo).map((u) => `<option value="${esc(u.nombre)}">`).join("")}</datalist>
       <div class="dlg-botones"><button class="btn" value="" formnovalidate>Cancelar</button><button class="btn primario" value="ok">Guardar</button></div>`);
     if (v !== "ok") return;
     const D = S.dlgDatos;
     try {
-      await api.actualizar(i.id, { titulo: D.titulo.trim(), descripcion: D.descripcion.trim(), ubicacion: D.ubicacion.trim(), persona: D.persona.trim(), prioridad: D.prioridad });
+      await api.actualizar(i.id, { titulo: D.titulo.trim(), descripcion: D.descripcion.trim(), ubicacion: D.ubicacion.trim(), persona: D.persona.trim(), ...(D.urgencia ? { urgencia: D.urgencia } : {}) });
       S.incs = await api.incidencias(); toast("Cambios guardados"); abrirFicha(i.id); pintarLista();
     } catch (e) { fallo(e); }
   }
@@ -677,7 +688,7 @@
     if (!F.persona.value.trim()) marca(F.persona.closest(".campo"), "Indica la persona afectada o de contacto");
     if (F.titulo.value.trim().length < 3) marca(F.titulo.closest(".campo"), "Escribe un resumen");
     if (F.descripcion.value.trim().length < 10) marca(F.descripcion.closest(".campo"), "Describe la incidencia con algo más de detalle");
-    if (!F.prioridad.value) marca($(".prioridades", F), "Elige la prioridad");
+    if (!F.prioridad.value) marca($(".prioridades", F), "Elige la urgencia");
     return { mal, ubi };
   }
   async function enviarNueva() {
@@ -693,7 +704,7 @@
     btn.disabled = true; btn.textContent = "Enviando…";
     try {
       const inc = await api.crear({ categoria: N.cat, subcategoria: N.sub, elementos: [...N.elems], ubicacion: ubi, persona: F.persona.value.trim(),
-        titulo: F.titulo.value.trim(), descripcion: F.descripcion.value.trim(), prioridad: F.prioridad.value });
+        titulo: F.titulo.value.trim(), descripcion: F.descripcion.value.trim(), urgencia: F.prioridad.value });
       for (const [n, a] of N.archivos.entries()) {
         btn.textContent = `Subiendo ${n + 1}/${N.archivos.length}…`;
         try { await api.subir(inc.id, a.file); } catch (e) { fallo(e); }
@@ -805,7 +816,7 @@
     ["categoria", "Categoría", 24, (i) => cat(i.categoria)?.nombre || i.categoria, true], ["subcategoria", "Subcategoría", 20, (i) => i.subcategoria, true],
     ["elementos", "Qué falla", 22, (i) => (i.elementos || []).join(", "), false], ["ubicacion", "Aula o zona", 18, (i) => i.ubicacion, true],
     ["persona", "Persona", 20, (i) => i.persona, false], ["titulo", "Resumen", 34, (i) => i.titulo, true],
-    ["descripcion", "Descripción", 50, (i) => i.descripcion, false], ["prioridad", "Prioridad", 13, (i) => PRIOS[i.prioridad], true],
+    ["descripcion", "Descripción", 50, (i) => i.descripcion, false], ["urgencia", "Urgencia indicada", 14, (i) => PRIOS[urg(i)], false], ["prioridad", "Prioridad asignada", 14, (i) => PRIOS[i.prioridad], true],
     ["estado", "Estado", 15, (i) => ESTADOS[i.estado], true], ["responsable", "Responsable", 20, (i) => i.asignado_nombre || "", true],
     ["creador", "Creada por", 20, (i) => i.creado_nombre || i.creado_por, false], ["cerrada", "Cerrada", 16, (i) => (i.cerrado ? fechaHora(i.cerrado) : ""), false],
   ].map(([id, titulo, ancho, valor, porDefecto]) => ({ id, titulo, ancho, valor, porDefecto }));
@@ -816,10 +827,10 @@
     const c = cat(i.categoria), fotos = det.adjuntos.filter((a) => a.tipo.startsWith("image/")), otros = det.adjuntos.filter((a) => !a.tipo.startsWith("image/"));
     return {
       titulo: `${codigo(i.id)} · ${i.titulo}`,
-      etiquetas: `${ESTADOS[i.estado]} · Prioridad ${PRIOS[i.prioridad].toLowerCase()}`,
+      etiquetas: `${ESTADOS[i.estado]} · Prioridad asignada: ${PRIOS[i.prioridad].toLowerCase()} · Urgencia indicada: ${PRIOS[urg(i)].toLowerCase()}`,
       datos: [["Tipo", `${c?.nombre || i.categoria} › ${i.subcategoria}`], ...(i.elementos?.length ? [["Qué falla", i.elementos.join(", ")]] : []),
         ["Aula o zona", i.ubicacion || "—"], ["Persona", i.persona], ["Creada", `${fechaHora(i.creado)} · ${i.creado_nombre || nombreDeEmail(i.creado_por)}`],
-        ["Responsable", i.asignado_nombre || "Sin asignar"], ...(i.cerrado ? [["Cerrada", fechaHora(i.cerrado)]] : []),
+        ["Responsable", i.asignado_nombre || "Sin asignar"], ["Urgencia indicada", PRIOS[urg(i)]], ["Prioridad asignada", PRIOS[i.prioridad]], ...(i.cerrado ? [["Cerrada", fechaHora(i.cerrado)]] : []),
         ...(otros.length ? [["Otros archivos", otros.map((a) => a.nombre).join(", ")]] : [])],
       descripcion: i.descripcion,
       fotos: (await Promise.all(fotos.map((a) => api.urlAdjunto(a).catch(() => null)))).filter(Boolean),
@@ -956,10 +967,12 @@
     for (const [c, s, el, ubi, per, tit, des, pri, est, horas] of ej) {
       const t = new Date(ahora - horas * h).toISOString(), id = ++d.seq;
       const tec = c === "informatica" ? tecInf : tecMan, asig = est !== "abierta" ? tec : null;
-      d.incs.push({ id, categoria: c, subcategoria: s, elementos: el, ubicacion: ubi, persona: per, titulo: tit, descripcion: des, prioridad: pri, estado: est,
+      d.incs.push({ id, categoria: c, subcategoria: s, elementos: el, ubicacion: ubi, persona: per, titulo: tit, descripcion: des, prioridad: pri, urgencia: { "Añadir al equipo de Teams de 3º ESO": "alta", "La wifi se corta en la biblioteca": "alta" }[tit] || pri, estado: est,
         asignado_email: asig?.email || null, asignado_nombre: asig?.nombre || null, creado_por: coord.email, creado_nombre: coord.nombre, creado: t, actualizado: t,
         cerrado: est === "cerrada" ? new Date(ahora - (horas - 20) * h).toISOString() : null });
       demoEvento(d, id, "creada", {}, t, coord);
+      const inc = d.incs[d.incs.length - 1];
+      if (inc.urgencia !== pri) demoEvento(d, id, "prioridad", { de: inc.urgencia, a: pri }, new Date(ahora - (horas - 0.5) * h).toISOString(), tec);
       if (asig) {
         const t2 = new Date(ahora - (horas - 1) * h).toISOString();
         demoEvento(d, id, "asignacion", { a: tec.nombre }, t2, tec);
