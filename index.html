@@ -65,23 +65,24 @@
     </div>
     <div class="presenta-info">
       <details class="info-bloque">
-        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.7 3.1 2.4 3.5 5.2"/></svg><span>Profesorado <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
+        <summary><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 14.8c1.9.7 3.1 2.4 3.5 5.2"/></svg><span>Profesorado <em class="aviso-etq">Sin acceso</em> <small>Las incidencias las dan de alta coordinación</small></span></summary>
         <ul>
-          <li><b>Incidencias:</b> todas las incidencias del colegio, con su estado (abierta, en proceso, pausada o cerrada) y su historial.</li>
-          <li>Si necesitas avisar de algo, díselo a tu coordinador/a: es quien da de alta las incidencias.</li>
+          <li>Si necesitas avisar de algo (una avería, material, una cuenta de Microsoft 365 o Google…), <b>díselo a tu coordinador/a</b>: es quien crea la incidencia y la sigue.</li>
+          <li>Solo entran las cuentas autorizadas: coordinación, técnicos y administración.</li>
         </ul>
       </details>
       <details class="info-bloque">
         <summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg><span>Coordinación <em class="aviso-etq">Solo cuentas autorizadas</em> <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
         <ul>
           <li><b>Nueva incidencia:</b> qué ocurre, dónde (aula o zona), a quién afecta, la urgencia y, si quieres, una foto hecha con el móvil.</li>
+          <li>Al crearla, con <b>Avisar por correo</b> se abre Outlook con el aviso ya escrito para administración (con copia para ti).</li>
           <li>En tus incidencias puedes añadir comentarios y fotos, y corregirlas mientras siguen abiertas.</li>
         </ul>
       </details>
       <details class="info-bloque">
         <summary><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>Técnicos y administración <em class="aviso-etq">Solo cuentas autorizadas</em> <small>Acceso: inicio de sesión con Microsoft 365 (@salesianas.org)</small></span></summary>
         <ul>
-          <li><b>Técnicos:</b> cambian el estado, la prioridad y el responsable de cada incidencia y anotan lo que se ha hecho.</li>
+          <li><b>Técnicos:</b> cambian el estado, la prioridad y el responsable de cada incidencia y anotan lo que se ha hecho. Al asignar un técnico, <b>Avisar al técnico</b> le escribe desde Outlook.</li>
           <li><b>Administración:</b> además, resumen y descarga para Excel, aulas y zonas, y quién es coordinador/a, técnico/a o administrador/a.</li>
         </ul>
       </details>
@@ -121,6 +122,15 @@
           Entrar con Microsoft 365
         </button>
         <p id="loginError" class="error"></p>
+      </div>
+    </section>
+
+    <!-- Cuenta sin rol en Incidencias -->
+    <section id="vSinAcceso" class="login" hidden>
+      <div class="tarjeta">
+        <h2>No tienes acceso</h2>
+        <p>La web de Incidencias es solo para <b>coordinación, técnicos y administración</b>.</p>
+        <p>Si necesitas avisar de algo, díselo a tu coordinador/a. Si crees que deberías tener acceso, escribe a <a href="mailto:administracionnervion@salesianas.org">administracionnervion@salesianas.org</a>.</p>
       </div>
     </section>
 

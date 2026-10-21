@@ -4,7 +4,7 @@
 -- Los permisos van a la lista común «permisos» (web = 'incidencias') con uno de estos roles:
 --   coordinador = crea incidencias · tecnico = además las atiende (estado, prioridad, responsable)
 --   admin       = además gestiona aulas y zonas y da o quita permisos.
--- El resto del profesorado (cualquier cuenta del colegio) solo las ve.
+-- Solo entran estas cuentas: el resto del profesorado no ve nada (desde el 21-10-2026).
 -- Se puede volver a ejecutar sin perder datos.
 
 begin;
@@ -236,16 +236,16 @@ language sql stable security definer set search_path = public as $$
   select p.email, coalesce(pe.nombre, ''), p.rol,
          coalesce((select array_agg(c.categoria order by c.categoria) from inc_tecnico_categorias c where c.email = p.email), '{}')
   from permisos p left join personal pe on pe.email = p.email
-  where p.web = 'incidencias' and p.rol in ('admin', 'tecnico') and es_profesorado()
+  where p.web = 'incidencias' and p.rol in ('admin', 'tecnico') and inc_puede_crear()
   order by 2, 1
 $$;
 create or replace function inc_personal() returns table (email text, nombre text)
 language sql stable security definer set search_path = public as $$
-  select pe.email, pe.nombre from personal pe where es_profesorado() and coalesce(pe.activo, true) and coalesce(pe.nombre, '') <> '' order by pe.nombre
+  select pe.email, pe.nombre from personal pe where inc_puede_crear() and coalesce(pe.activo, true) and coalesce(pe.nombre, '') <> '' order by pe.nombre
 $$;
 grant execute on function inc_gestores(), inc_personal() to authenticated;
 
--- 9. Seguridad: todo el profesorado (cuentas del colegio) ve; cada rol hace lo suyo
+-- 9. Seguridad: solo ven las cuentas con rol en Incidencias; cada rol hace lo suyo
 alter table inc_ubicaciones enable row level security;
 alter table inc_incidencias enable row level security;
 alter table inc_eventos     enable row level security;
@@ -254,7 +254,7 @@ alter table inc_tecnico_categorias enable row level security;
 
 drop policy if exists "ver categorias de tecnicos"       on inc_tecnico_categorias;
 drop policy if exists "gestionar categorias de tecnicos" on inc_tecnico_categorias;
-create policy "ver categorias de tecnicos" on inc_tecnico_categorias for select to authenticated using (es_profesorado());
+create policy "ver categorias de tecnicos" on inc_tecnico_categorias for select to authenticated using (inc_puede_crear());
 create policy "gestionar categorias de tecnicos" on inc_tecnico_categorias for all to authenticated
   using (inc_es_admin()) with check (inc_es_admin() and es_cuenta_colegio(email));
 grant select, insert, delete on inc_tecnico_categorias to authenticated;
@@ -262,7 +262,7 @@ revoke all on inc_tecnico_categorias from anon;
 
 drop policy if exists "ver ubicaciones"       on inc_ubicaciones;
 drop policy if exists "gestionar ubicaciones" on inc_ubicaciones;
-create policy "ver ubicaciones" on inc_ubicaciones for select to authenticated using (es_profesorado());
+create policy "ver ubicaciones" on inc_ubicaciones for select to authenticated using (inc_puede_crear());
 create policy "gestionar ubicaciones" on inc_ubicaciones for all to authenticated
   using (inc_es_admin()) with check (inc_es_admin());
 
@@ -270,7 +270,7 @@ drop policy if exists "ver incidencias"    on inc_incidencias;
 drop policy if exists "crear incidencia"   on inc_incidencias;
 drop policy if exists "cambiar incidencia" on inc_incidencias;
 drop policy if exists "borrar incidencia"  on inc_incidencias;
-create policy "ver incidencias" on inc_incidencias for select to authenticated using (es_profesorado());
+create policy "ver incidencias" on inc_incidencias for select to authenticated using (inc_puede_crear());
 create policy "crear incidencia" on inc_incidencias for insert to authenticated
   with check (inc_puede_crear() and creado_por = email_jwt());
 create policy "cambiar incidencia" on inc_incidencias for update to authenticated
@@ -281,7 +281,7 @@ create policy "borrar incidencia" on inc_incidencias for delete to authenticated
 drop policy if exists "ver historial"     on inc_eventos;
 drop policy if exists "comentar"          on inc_eventos;
 drop policy if exists "borrar comentario" on inc_eventos;
-create policy "ver historial" on inc_eventos for select to authenticated using (es_profesorado());
+create policy "ver historial" on inc_eventos for select to authenticated using (inc_puede_crear());
 create policy "comentar" on inc_eventos for insert to authenticated
   with check (tipo = 'comentario' and autor = email_jwt() and length(trim(texto)) > 0
     and exists (select 1 from inc_incidencias i where i.id = incidencia_id and (inc_gestiona(i.categoria) or i.creado_por = email_jwt())));
@@ -291,7 +291,7 @@ create policy "borrar comentario" on inc_eventos for delete to authenticated
 drop policy if exists "ver adjuntos"    on inc_adjuntos;
 drop policy if exists "subir adjunto"   on inc_adjuntos;
 drop policy if exists "borrar adjunto"  on inc_adjuntos;
-create policy "ver adjuntos" on inc_adjuntos for select to authenticated using (es_profesorado());
+create policy "ver adjuntos" on inc_adjuntos for select to authenticated using (inc_puede_crear());
 create policy "subir adjunto" on inc_adjuntos for insert to authenticated
   with check (creado_por = email_jwt()
     and exists (select 1 from inc_incidencias i where i.id = incidencia_id and (inc_gestiona(i.categoria) or i.creado_por = email_jwt())));
@@ -311,7 +311,7 @@ drop policy if exists inc_adjuntos_ver    on storage.objects;
 drop policy if exists inc_adjuntos_subir  on storage.objects;
 drop policy if exists inc_adjuntos_borrar on storage.objects;
 create policy inc_adjuntos_ver on storage.objects for select to authenticated
-  using (bucket_id = 'inc-adjuntos' and es_profesorado());
+  using (bucket_id = 'inc-adjuntos' and inc_puede_crear());
 create policy inc_adjuntos_subir on storage.objects for insert to authenticated
   with check (bucket_id = 'inc-adjuntos' and inc_puede_crear());
 create policy inc_adjuntos_borrar on storage.objects for delete to authenticated

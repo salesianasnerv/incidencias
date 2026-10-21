@@ -6,7 +6,7 @@ Web de incidencias con tickets para el colegio. Se entra con la cuenta de Micros
 
 | Rol | Qué puede hacer |
 |---|---|
-| **Profesorado** (cualquier cuenta @salesianas.org) | Ver todas las incidencias, su estado y su historial. |
+| **Profesorado** (resto de cuentas del colegio) | **Sin acceso** desde el 21-10-2026: al entrar ven «No tienes acceso». Si necesitan avisar de algo, se lo dicen a su coordinador/a. |
 | **Coordinador/a** | Además, crear incidencias. En las suyas puede añadir comentarios y fotos, y corregir los datos mientras siguen abiertas. |
 | **Técnico/a** | Además, atender las incidencias **de sus categorías** (informática, mobiliario, infraestructura, fungibles): estado, prioridad, responsable («Asignármela»), comentarios y fotos. Las categorías se marcan en cada técnico; sin ninguna marcada, atiende todas. |
 | **Administración** | Atiende todas las incidencias y tiene el menú *Administración*: **panel de control** (cada cifra se pulsa y lista sus incidencias, que se abren para gestionarlas), descarga para Excel, aulas y zonas, y quién tiene cada rol y qué categorías atiende cada técnico. Puede borrar incidencias. |
@@ -30,7 +30,7 @@ Con `supabaseUrl` vacío en `config.js` (como está ahora), la web funciona sin 
 
 Las tablas de esta web empiezan por `inc_` y no tocan las de las demás webs. Los roles van a la lista común `permisos` (web `incidencias`). Como ese proyecto ya tiene el acceso con Microsoft 365, **no hace falta pedir nada a informática**.
 
-1. **Base de datos.** En https://supabase.com, abre el proyecto «Acceso Microsoft 365» → *SQL Editor*. Pega y ejecuta `supabase/schema.sql` (en una base de datos que ya tenía la primera versión, basta con `supabase/cambios-19-10-2026.sql`). Al final deben salir 3 permisos y 52 aulas y zonas. También crea la carpeta privada de adjuntos (`inc-adjuntos`, en *Storage*). Se puede volver a ejecutar sin perder datos.
+1. **Base de datos.** En https://supabase.com, abre el proyecto «Acceso Microsoft 365» → *SQL Editor*. Pega y ejecuta `supabase/schema.sql` (en una base de datos que ya tenía la primera versión, basta con `supabase/cambios-19-10-2026.sql` y `supabase/cambios-21-10-2026.sql`). Al final deben salir 3 permisos y 52 aulas y zonas. También crea la carpeta privada de adjuntos (`inc-adjuntos`, en *Storage*). Se puede volver a ejecutar sin perder datos.
 2. **Publicar.** Sube esta carpeta a un repositorio nuevo de GitHub (por ejemplo, `incidencias-nervion`). En https://vercel.com → *Add New → Project*, impórtalo. *Framework Preset*: **Other**, sin comando de compilación.
 3. **Permitir la vuelta tras el login.** En Supabase → *Authentication → URL Configuration → Redirect URLs*, añade `https://incidencias-nervion.vercel.app/**` (con tu dirección). **No cambies la *Site URL***, porque es la del Control de baños.
 4. **Modo real.** `config.js` ya apunta al Supabase común. Para volver al modo prueba, deja vacíos `supabaseUrl` y `supabaseAnonKey`.
@@ -42,6 +42,10 @@ Las tablas de esta web empiezan por `inc_` y no tocan las de las demás webs. Lo
 8. Si se quieren avisos por correo, sigue el apartado siguiente.
 
 ## Avisos por correo
+
+**Desde la cuenta de cada persona (Outlook).** Al crear una incidencia sale **Avisar a administración**, y al asignar un técnico, **Avisar al técnico**. Abren Outlook en la web con el correo ya escrito (para administración o el técnico, con copia a quien la creó); solo hay que pulsar *Enviar*. Los mismos botones están en la ficha de cada incidencia. Si alguien usa el programa de correo del ordenador, hay un enlace para abrirlo con él.
+
+**Aviso automático de respaldo.** Además, la base de datos manda siempre un aviso al buzón `web@` (abajo), por si no se envía el de Outlook.
 
 Avisan de lo que pasa con cada incidencia:
 
