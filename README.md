@@ -43,57 +43,30 @@ Las tablas de esta web empiezan por `inc_` y no tocan las de las demás webs. Lo
 
 ## Avisos por correo
 
-La web avisa por correo de esto:
+Avisan de lo que pasa con cada incidencia:
 
-| Qué pasa | A quién le llega |
-|---|---|
-| Se crea una incidencia | A **técnicos y administración** de Incidencias (los de *Administración → Coordinación, técnicos y administración*). |
-| Una incidencia cambia de estado | A **quien la creó**. |
-| Alguien comenta en una incidencia | A **quien la creó**. |
+- **Incidencia nueva** → administración y los técnicos de esa categoría.
+- **Cambio de estado** y **comentario** → quien la creó.
 
-A quien hace el cambio no le llega aviso de lo suyo. Los cambios de prioridad o de responsable no avisan. El correo lleva los datos de la incidencia y el botón **Abrir la incidencia**. Si se responde al correo, la respuesta le llega a quien hizo el cambio.
+A quien hace el cambio no le llega aviso de lo suyo. Los cambios de prioridad o de responsable no avisan. El correo lleva los datos de la incidencia y el botón **Abrir la incidencia**.
 
-**Cómo funciona.** Al apuntarse algo en el historial, la base de datos (`supabase/avisos.sql`) decide a quién avisar y llama a la función `api/notificar.js` de esta misma web en Vercel. Esa función envía el correo con **Resend** (resend.com), el mismo servicio que usa el formulario del Portal del profesorado. Si el correo falla, la incidencia se guarda igual.
+**Cómo funciona.** Al apuntarse algo en el historial, la base de datos (`supabase/avisos.sql`) decide a quién avisar y llama a la función `api/aviso-incidencia.js` del **Portal del profesorado** (claustro-utilidades.vercel.app). Esa función usa la misma cuenta de Resend que las propuestas del portal, así que no hay claves que configurar. Si el correo falla, la incidencia se guarda igual.
 
-### Ponerlos en marcha (una sola vez)
+**Buzón central.** Resend no tiene dominio verificado, así que solo puede enviar a `web@nervion.salesianas.org`: **todos los avisos llegan ahí**, con el asunto `Incidencias | [Categoría] [Nueva/Estado/Comentario] #0012 · Título` y, dentro, la fila **«Avisar a»**. Desde ese buzón se reenvían con reglas de Outlook:
 
-1. **Dominio en Resend.** Entra en https://resend.com con la cuenta que ya existe (la de `web@nervion.salesianas.org`, la del Portal del profesorado). Sin un dominio verificado, Resend solo envía a esa dirección, así que hay que verificarlo:
-   - *Domains → Add Domain* → escribe `nervion.salesianas.org` y elige la región *Ireland (eu-west-1)*.
-   - Resend muestra unos registros DNS (normalmente 3: uno `MX` y uno `TXT` en `send.nervion…` y uno `TXT` en `resend._domainkey.nervion…`). Pídele a quien gestiona el DNS de `salesianas.org` que los añada tal cual.
-   - Cuando estén, pulsa *Verify DNS Records*. En unos minutos (a veces unas horas) debe salir **Verified**.
-2. **Clave de Resend.** En Resend → *API Keys → Create API Key*: nombre «Incidencias», permiso **Sending access** y el dominio `nervion.salesianas.org`. Copia la clave (empieza por `re_`), porque solo se ve una vez.
-3. **Clave secreta de los avisos.** Inventa una contraseña larga, de 30 caracteres o más, sin espacios ni comillas. Sirve para que nadie más pueda usar la función para enviar correos. Se usa en los pasos 4 y 5.
-4. **Variables en Vercel.** En Vercel → proyecto de Incidencias → *Settings → Environment Variables*, crea:
-   - `RESEND_API_KEY`: la clave del paso 2.
-   - `AVISOS_SECRETO`: la clave secreta del paso 3.
-   - `AVISOS_DE`: `Incidencias <incidencias@nervion.salesianas.org>` (el remitente; tiene que ser del dominio verificado y no hace falta que el buzón exista).
-   - `AVISOS_WEB`: la dirección de la web, por ejemplo `https://incidencias-nervion.vercel.app` (para el botón *Abrir la incidencia*).
+- Todos a administración: *Configuración → Correo → Reglas → Agregar regla*. Condición: **El asunto incluye** `Incidencias |`. Acción: **Reenviar a** `administracionnervion@salesianas.org`.
+- A cada técnico, si se quiere: otra regla con **El asunto incluye** `[Informática y tecnología]` (o `[Mobiliario y equipamiento]`, `[Infraestructura y mantenimiento]`, `[Fungibles]`) y **Reenviar a** su correo.
 
-   Después, en *Deployments*, pulsa los tres puntos del último despliegue → **Redeploy**, para que se apliquen.
-5. **Base de datos.** En Supabase → *SQL Editor*, pega y ejecuta `supabase/avisos.sql`. Después, en una consulta nueva, pon tu dirección y la clave secreta del paso 3 y ejecútalo. **No lo guardes en ningún archivo ni lo subas a GitHub.**
-   ```sql
-   update inc_avisos_ajustes set valor = 'https://incidencias-nervion.vercel.app/api/notificar' where clave = 'url';
-   update inc_avisos_ajustes set valor = 'LA-CLAVE-SECRETA-DEL-PASO-3' where clave = 'secreto';
-   ```
-6. **Probar.** Pide a un técnico que cambie el estado de una incidencia tuya, o crea una con una cuenta de coordinación: el correo llega en unos segundos (mira también en *Correo no deseado* la primera vez).
+**Ponerlo en marcha.** En Supabase → *SQL Editor*, ejecutar `supabase/avisos.sql` (una vez). Ya deja puesta la dirección de la función del portal.
 
-### Si no llega el correo
+**Si algún día se verifica un dominio en Resend** (registros DNS de `nervion.salesianas.org`): en el proyecto de Vercel del portal, poner `PROPUESTAS_DE` (o `AVISOS_DE`) con un remitente de ese dominio y `AVISOS_SECRETO` con una clave larga, y la misma clave en Supabase: `update inc_avisos_ajustes set valor = '…' where clave = 'secreto';` (no guardarla en ningún archivo). Desde ese momento cada aviso va directamente a cada persona.
 
-- En Supabase → *SQL Editor*, esta consulta muestra las últimas llamadas a la función y su respuesta:
-  ```sql
-  select created, status_code, content from net._http_response order by created desc limit 5;
-  ```
-  - `401 Clave secreta incorrecta`: la clave de `inc_avisos_ajustes` no es igual que `AVISOS_SECRETO` en Vercel (o falta el *Redeploy*).
-  - `502 El servicio de correo no ha aceptado el envío`: el dominio no está verificado en Resend, o `AVISOS_DE` no es de ese dominio. En Vercel → *Logs* sale el motivo exacto.
-  - Sin filas: falta la dirección (`url`) en `inc_avisos_ajustes`.
-- En Resend → *Emails* se ve cada correo enviado y si se ha entregado.
-- **Probar sin enviar:** con la variable `AVISOS_PRUEBA` = `si` en Vercel (y *Redeploy*), la función no envía nada y devuelve el correo que habría mandado. Ese correo se ve con la consulta de arriba.
-- **Pararlos un tiempo:** `update inc_avisos_ajustes set valor = 'no' where clave = 'activo';` (y `'si'` para volver a activarlos).
+**Comprobar.** Para ver las últimas llamadas y su respuesta: `select created, status_code, content from net._http_response order by created desc limit 10;` En Resend → *Emails* se ve cada correo enviado.
 
 ## Seguridad
 
 - Solo pueden entrar cuentas **@salesianas.org** (y @salesianes.org). Las reglas están en la base de datos (`supabase/schema.sql`), así que no se pueden saltar desde la web.
 - Solo coordinación, técnicos y administración crean incidencias, y cada una queda a nombre de quien la crea. Solo técnicos y administración cambian el estado o el responsable; el historial lo escribe la propia base de datos.
 - Las fotos y archivos están en una carpeta **privada** de Supabase: solo se ven con sesión iniciada y mediante enlaces que caducan en una hora.
-- Los avisos por correo solo los manda la base de datos: la función `api/notificar.js` rechaza cualquier llamada sin la clave secreta, y la dirección y la clave guardadas en Supabase no se pueden leer desde la web.
+- Los avisos por correo los manda la base de datos a través del portal. Mientras solo puedan ir a `web@nervion.salesianas.org`, la función del portal no necesita clave (lo peor que se podría hacer es mandar correos a ese buzón, como con el formulario de propuestas); cuando envíe a cada persona, exige la clave secreta.
 - Al borrar una incidencia (solo Administración) se borran también su historial y sus archivos. Si está resuelta, mejor cerrarla.

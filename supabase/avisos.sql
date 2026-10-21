@@ -1,12 +1,15 @@
 -- ─── Incidencias · avisos por correo ─────────────────────────────────────────
 -- Se ejecuta en el Supabase común «Acceso Microsoft 365», en SQL Editor, DESPUÉS de schema.sql.
 -- Cada vez que se apunta algo en el historial (inc_eventos), la base de datos decide a quién avisar
--- y llama a la función de Vercel «api/notificar.js», que envía el correo con Resend:
+-- y llama a la función «api/aviso-incidencia.js» del Portal del profesorado (claustro-utilidades.vercel.app),
+-- que envía el correo con la misma cuenta de Resend que las propuestas del portal:
 --   · incidencia nueva       → administración y los técnicos de esa categoría (permisos web = 'incidencias')
 --   · cambio de estado        → quien la creó
 --   · comentario              → quien la creó
 -- A quien hace el cambio no se le avisa de lo suyo. Si el aviso falla, la incidencia se guarda igual.
--- La dirección de la función y la clave secreta se guardan en inc_avisos_ajustes (ver README.md).
+-- Mientras Resend no tenga dominio verificado, todos los avisos llegan a web@nervion.salesianas.org
+-- (con «Avisar a» dentro) y desde ese buzón se reenvían con reglas de Outlook (ver README.md).
+-- La dirección de la función (y, si algún día hace falta, la clave secreta) están en inc_avisos_ajustes.
 -- Se puede volver a ejecutar sin perder datos.
 
 begin;
@@ -23,6 +26,8 @@ alter table inc_avisos_ajustes enable row level security;
 revoke all on inc_avisos_ajustes from anon, authenticated;
 insert into inc_avisos_ajustes (clave, valor) values ('url', ''), ('secreto', ''), ('activo', 'si')
 on conflict (clave) do nothing;
+-- Función de envío del Portal del profesorado (si no hay otra puesta)
+update inc_avisos_ajustes set valor = 'https://claustro-utilidades.vercel.app/api/aviso-incidencia' where clave = 'url' and valor = '';
 
 -- 3. Quién recibe el aviso de cada apunte del historial (sirve también para comprobarlo a mano)
 create or replace function inc_avisos_destinatarios(ev inc_eventos) returns text[]
@@ -68,7 +73,7 @@ begin
       'incidencia', jsonb_build_object('id', inc.id, 'categoria', inc.categoria, 'subcategoria', inc.subcategoria,
                                        'elementos', to_jsonb(inc.elementos), 'ubicacion', inc.ubicacion,
                                        'persona', inc.persona, 'titulo', inc.titulo, 'descripcion', inc.descripcion,
-                                       'prioridad', inc.prioridad, 'estado', inc.estado,
+                                       'prioridad', inc.prioridad, 'urgencia', inc.urgencia, 'estado', inc.estado,
                                        'asignado_nombre', inc.asignado_nombre,
                                        'creado_por', inc.creado_por, 'creado_nombre', inc.creado_nombre)
     ),
