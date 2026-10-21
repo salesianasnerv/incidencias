@@ -538,8 +538,6 @@
       ${await htmlAdjuntos(iniciales)}
       <div class="f-acc">
         <button type="button" class="btn mini" data-copiar>Copiar enlace</button>
-        <button type="button" class="btn mini" data-avisar="nueva">Avisar a administración</button>
-        ${gestiona(i) && i.asignado_email && i.asignado_email !== S.user.email ? `<button type="button" class="btn mini" data-avisar="tecnico">Avisar al técnico</button>` : ""}
         <button type="button" class="btn mini" data-descargar="pdf">Descargar PDF</button>
         <button type="button" class="btn mini" data-descargar="word">Descargar Word</button>
         ${puedeEditar(i) ? `<button type="button" class="btn mini" data-editar>Corregir datos</button>` : ""}
@@ -565,7 +563,6 @@
     if (d.quitarAdj != null) { S.ficha.archivos.splice(+d.quitarAdj, 1); return pintarPrevia($("#cPrevia"), S.ficha.archivos); }
     if (d.asignarme != null) { const s = $("#fComentar").asignado; if (!S.gestores.some((g) => g.email === S.user.email)) S.gestores.push({ email: S.user.email, nombre: S.user.nombre, rol: S.user.rol, categorias: S.user.categorias }); s.innerHTML = opcionesGestores(i); s.value = S.user.email; if (s.form.estado.value === "abierta") s.form.estado.value = "en_proceso"; return; }
     if (d.descargar) return descargarFicha(d.descargar);
-    if (d.avisar) return dialogoAvisar(i, d.avisar);
     if (d.copiar != null) {
       const url = location.origin + location.pathname + "#inc-" + i.id;
       try { await navigator.clipboard.writeText(url); toast("Enlace copiado"); } catch { prompt("Copia el enlace:", url); }
@@ -612,8 +609,6 @@
       for (const [n, a] of S.ficha.archivos.entries()) { btn.textContent = `Subiendo ${n + 1}/${S.ficha.archivos.length}…`; await api.subir(i.id, a.file, ev?.id); }
       S.incs = await api.incidencias();
       toast("Guardado"); await abrirFicha(i.id); pintarLista(); contarPendientes(); if (S.vista === "admin" && S.admSec === "resumen") pintarResumen();
-      // Recién asignada a otra persona: se ofrece avisarle por correo
-      if (cambios.asignado_email && cambios.asignado_email !== S.user.email) dialogoAvisar(S.ficha.inc, "tecnico");
     } catch (e) { fallo(e); btn.disabled = false; btn.textContent = "Guardar"; }
   }
 
@@ -719,48 +714,9 @@
       S.incs = await api.incidencias();
       F.reset(); S.nueva = formNuevo();
       toast(`Incidencia ${codigo(inc.id)} enviada`);
-      S.estado = "pend"; mostrar("lista"); await abrirFicha(inc.id);
-      dialogoAvisar(S.ficha?.inc || inc, "nueva");
+      S.estado = "pend"; mostrar("lista"); abrirFicha(inc.id);
     } catch (e) { fallo(e); }
     btn.disabled = false; btn.textContent = "Enviar incidencia";
-  }
-
-  // ─── Avisar por correo desde la propia cuenta (Outlook) ───────────────────
-  // Abre Outlook en la web con el correo ya escrito; también hay un enlace para el programa de correo del ordenador.
-  // Además, la base de datos manda siempre un aviso automático al buzón web@ (avisos.sql), por si no se envía este.
-  function correoAviso(i, tipo) {
-    const c = cat(i.categoria)?.nombre || i.categoria, url = location.origin + location.pathname + "#inc-" + i.id;
-    const admins = S.gestores.filter((g) => g.rol === "admin").map((g) => g.email);
-    const quitar = (l) => [...new Set(l.filter(Boolean).map((x) => x.toLowerCase()))];
-    let para, copia, saludo, frase, etiqueta;
-    if (tipo === "tecnico") {
-      para = quitar([i.asignado_email]); copia = quitar([i.creado_por]).filter((x) => !para.includes(x) && x !== S.user.email);
-      saludo = `Hola, ${(i.asignado_nombre || "").split(" ")[0]}:`; frase = "Te he asignado esta incidencia:"; etiqueta = "Asignada";
-    } else {
-      para = quitar(admins).filter((x) => x !== S.user.email);
-      if (!para.length) para = ["administracionnervion@salesianas.org"];
-      copia = quitar([i.creado_por]).filter((x) => !para.includes(x));
-      saludo = "Hola:"; frase = i.creado_por === S.user.email ? "He creado esta incidencia:" : "Os aviso de esta incidencia:"; etiqueta = i.estado === "abierta" ? "Nueva" : ESTADOS[i.estado];
-    }
-    const datos = [["Incidencia", `${codigo(i.id)} · ${i.titulo}`], ["Tipo", `${c} › ${i.subcategoria}${i.elementos?.length ? " (" + i.elementos.join(", ") + ")" : ""}`],
-      ["Dónde", i.ubicacion || "—"], ["Persona", i.persona], ["Urgencia", PRIOS[urg(i)]], ["Prioridad asignada", PRIOS[i.prioridad]], ["Estado", ESTADOS[i.estado]],
-      ["Descripción", i.descripcion]];
-    const asunto = `Incidencias | [${c}] [${etiqueta}] ${codigo(i.id)} · ${i.titulo}`;
-    const cuerpo = `${saludo}\n\n${frase}\n\n${datos.map(([k, v]) => `${k}: ${v}`).join("\n")}\n\nVer la incidencia: ${url}\n\nUn saludo,\n${S.user.nombre}`;
-    const q = (o) => Object.entries(o).filter(([, v]) => v).map(([k, v]) => k + "=" + encodeURIComponent(v)).join("&");
-    return { para, copia,
-      web: "https://outlook.office.com/mail/deeplink/compose?" + q({ to: para.join(","), cc: copia.join(","), subject: asunto, body: cuerpo }),
-      mailto: "mailto:" + para.join(",") + "?" + q({ cc: copia.join(","), subject: asunto, body: cuerpo }) };
-  }
-  function dialogoAvisar(i, tipo) {
-    const m = correoAviso(i, tipo);
-    if (!m.para.length) return toast("No hay a quién avisar");
-    return dialogo(`<h2>${tipo === "tecnico" ? "Avisar al técnico" : "Avisar a administración"}</h2>
-      <p class="dlg-sub">Se abre Outlook con el correo ya escrito, desde tu cuenta. Revísalo y pulsa <b>Enviar</b>.</p>
-      <dl class="correo-dest"><dt>Para</dt><dd>${m.para.map(esc).join(", ")}</dd>${m.copia.length ? `<dt>Copia</dt><dd>${m.copia.map(esc).join(", ")}</dd>` : ""}</dl>
-      <p class="nota">Si usas el programa de correo del ordenador: <a href="${esc(m.mailto)}" data-cerrar-dlg>abrirlo con él</a>.</p>
-      <div class="dlg-botones"><button class="btn" value="">Ahora no</button><a class="btn primario" href="${esc(m.web)}" target="_blank" rel="noopener" data-cerrar-dlg>Abrir en Outlook</a></div>`,
-      (f, dlg) => $$("[data-cerrar-dlg]", f).forEach((a) => a.addEventListener("click", () => setTimeout(() => dlg.close(), 100))));
   }
 
   // ─── Administración ───────────────────────────────────────────────────────

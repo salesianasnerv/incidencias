@@ -151,11 +151,6 @@ textarea { font: inherit; }
 .visor img { display: block; max-width: calc(100vw - 24px); max-height: calc(100vh - 60px); border-radius: 10px; }
 .visor-cerrar { position: absolute; top: -12px; right: -12px; background: #fff; color: #000; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 
-/* Avisar por correo */
-.correo-dest { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0; font-size: 14px; }
-.correo-dest dt { color: var(--suave); font-weight: 600; }
-.correo-dest dd { margin: 0; word-break: break-word; }
-a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 #vSinAcceso .tarjeta p { text-align: left; }
 
 /* Administración */

@@ -41,36 +41,42 @@ Las tablas de esta web empiezan por `inc_` y no tocan las de las demás webs. Lo
 7. Añádela a https://claustro-utilidades.vercel.app/ (apartado General) y, si se quiere, como app de Teams («0 - Apps de Teams»).
 8. Si se quieren avisos por correo, sigue el apartado siguiente.
 
-## Avisos por correo
+## Avisos por correo (Microsoft 365)
 
-**Desde la cuenta de cada persona (Outlook).** Al crear una incidencia sale **Avisar a administración**, y al asignar un técnico, **Avisar al técnico**. Abren Outlook en la web con el correo ya escrito (para administración o el técnico, con copia a quien la creó); solo hay que pulsar *Enviar*. Los mismos botones están en la ficha de cada incidencia. Si alguien usa el programa de correo del ordenador, hay un enlace para abrirlo con él.
+Son automáticos, sin botones:
 
-**Aviso automático de respaldo.** Además, la base de datos manda siempre un aviso al buzón `web@` (abajo), por si no se envía el de Outlook.
+- **Incidencia nueva** → administración, con todos los datos.
+- **Cambio de estado, prioridad, responsable o comentario** → quien la creó.
+- **Técnico asignado** → el técnico, con la descripción completa.
 
-Avisan de lo que pasa con cada incidencia:
+A quien hace el cambio no le llega aviso de lo suyo. El correo lleva los datos y el botón **Abrir la incidencia**; si se responde, la respuesta le llega a quien hizo el cambio.
 
-- **Incidencia nueva** → administración y los técnicos de esa categoría.
-- **Cambio de estado** y **comentario** → quien la creó.
+**Cómo funciona.** La base de datos (`supabase/avisos.sql`) decide a quién avisar, escribe el correo y se lo pasa a un **flujo de Power Automate** de una cuenta del colegio (mejor `administracionnervion@salesianas.org`). El flujo lo envía desde esa cuenta con Outlook. Si el correo falla, la incidencia se guarda igual. No se usa Resend ni ningún buzón de Google.
 
-A quien hace el cambio no le llega aviso de lo suyo. Los cambios de prioridad o de responsable no avisan. El correo lleva los datos de la incidencia y el botón **Abrir la incidencia**.
+### Crear el flujo (una sola vez, con la cuenta que enviará los correos)
 
-**Cómo funciona.** Al apuntarse algo en el historial, la base de datos (`supabase/avisos.sql`) decide a quién avisar y llama a la función `api/aviso-incidencia.js` del **Portal del profesorado** (claustro-utilidades.vercel.app). Esa función usa la misma cuenta de Resend que las propuestas del portal, así que no hay claves que configurar. Si el correo falla, la incidencia se guarda igual.
+1. Entra en https://make.powerautomate.com con esa cuenta → **Crear** → **Flujo de nube automatizado** → **Omitir**.
+2. Disparador: busca **«Cuando se recibe una solicitud de webhook de Teams»** (*When a Teams webhook request is received*). En **Quién puede desencadenar el flujo** elige **Cualquiera**.
+3. **+ Nuevo paso** → **Office 365 Outlook** → **Enviar un correo electrónico (V2)**. En cada campo, pestaña **Expresión** (o el botón *fx*):
+   - **Para:** `triggerBody()?['para']`
+   - **Asunto:** `triggerBody()?['asunto']`
+   - **Cuerpo:** `triggerBody()?['html']`
+   - En **Mostrar opciones avanzadas** → **Responder a:** `triggerBody()?['responder_a']`
+4. Nombre: «Avisos de Incidencias» → **Guardar**. Vuelve a abrir el disparador y **copia la dirección HTTP** que aparece.
+5. En Supabase → *SQL Editor*, pega esa dirección entre las comillas y ejecútalo (**no la guardes en ningún archivo ni la subas a GitHub**: quien la tenga puede enviar correos con ese flujo):
+   ```sql
+   update inc_avisos_ajustes set valor = 'PEGA-AQUÍ-LA-DIRECCIÓN-DEL-FLUJO' where clave = 'url';
+   ```
 
-**Buzón central.** Resend no tiene dominio verificado, así que solo puede enviar a `web@nervion.salesianas.org`: **todos los avisos llegan ahí**, con el asunto `Incidencias | [Categoría] [Nueva/Estado/Comentario] #0012 · Título` y, dentro, la fila **«Avisar a»**. Desde ese buzón se reenvían con reglas de Outlook:
+**Ponerlo en marcha:** ejecutar `supabase/avisos.sql` (una vez) y hacer los pasos de arriba.
 
-- Todos a administración: *Configuración → Correo → Reglas → Agregar regla*. Condición: **El asunto incluye** `Incidencias |`. Acción: **Reenviar a** `administracionnervion@salesianas.org`.
-- A cada técnico, si se quiere: otra regla con **El asunto incluye** `[Informática y tecnología]` (o `[Mobiliario y equipamiento]`, `[Infraestructura y mantenimiento]`, `[Fungibles]`) y **Reenviar a** su correo.
-
-**Ponerlo en marcha.** En Supabase → *SQL Editor*, ejecutar `supabase/avisos.sql` (una vez). Ya deja puesta la dirección de la función del portal.
-
-**Si algún día se verifica un dominio en Resend** (registros DNS de `nervion.salesianas.org`): en el proyecto de Vercel del portal, poner `PROPUESTAS_DE` (o `AVISOS_DE`) con un remitente de ese dominio y `AVISOS_SECRETO` con una clave larga, y la misma clave en Supabase: `update inc_avisos_ajustes set valor = '…' where clave = 'secreto';` (no guardarla en ningún archivo). Desde ese momento cada aviso va directamente a cada persona.
-
-**Comprobar.** Para ver las últimas llamadas y su respuesta: `select created, status_code, content from net._http_response order by created desc limit 10;` En Resend → *Emails* se ve cada correo enviado.
+**Comprobar.** En Power Automate → *Mis flujos* → «Avisos de Incidencias» se ve cada ejecución. En Supabase: `select created, status_code, left(content, 200) from net._http_response order by created desc limit 10;` (202 = el flujo lo ha recibido).
+**Pausar los avisos:** `update inc_avisos_ajustes set valor = 'no' where clave = 'activo';` (y `'si'` para volver a activarlos).
 
 ## Seguridad
 
 - Solo pueden entrar cuentas **@salesianas.org** (y @salesianes.org). Las reglas están en la base de datos (`supabase/schema.sql`), así que no se pueden saltar desde la web.
 - Solo coordinación, técnicos y administración crean incidencias, y cada una queda a nombre de quien la crea. Solo técnicos y administración cambian el estado o el responsable; el historial lo escribe la propia base de datos.
 - Las fotos y archivos están en una carpeta **privada** de Supabase: solo se ven con sesión iniciada y mediante enlaces que caducan en una hora.
-- Los avisos por correo los manda la base de datos a través del portal. Mientras solo puedan ir a `web@nervion.salesianas.org`, la función del portal no necesita clave (lo peor que se podría hacer es mandar correos a ese buzón, como con el formulario de propuestas); cuando envíe a cada persona, exige la clave secreta.
+- Los avisos por correo los manda la base de datos al flujo de Power Automate. La dirección del flujo solo está en Supabase (tabla `inc_avisos_ajustes`), que no se puede leer desde la web.
 - Al borrar una incidencia (solo Administración) se borran también su historial y sus archivos. Si está resuelta, mejor cerrarla.
