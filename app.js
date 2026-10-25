@@ -190,6 +190,7 @@
     },
     async borrarUbi(id) { const d = demoLeer(); d.ubis = d.ubis.filter((x) => x.id !== id); demoGuardar(d); },
     async cuentas() { return demoLeer().permisos.sort((a, b) => a.email.localeCompare(b.email)); },
+    async coordM365() { return []; },
     async addCuenta(email, rol) {
       const d = demoLeer(); if (d.permisos.some((p) => p.email === email)) throw new Error("Esa cuenta ya tiene un rol");
       d.permisos.push({ email, rol, creado: new Date().toISOString() }); demoGuardar(d);
@@ -273,6 +274,8 @@
       const cats = c.error ? [] : c.data;
       return ok(p).map((x) => ({ ...x, categorias: cats.filter((k) => k.email === x.email).map((k) => k.categoria) }));
     },
+    // Coordinación que entra por su grupo de Microsoft 365 (Equipo Directivo y Comisión Pedagógica)
+    async coordM365() { const r = await sb.rpc("inc_coordinacion_m365"); return r.error ? [] : r.data; },
     async ponerCategorias(email, l) {
       ok(await sb.from("inc_tecnico_categorias").delete().eq("email", email));
       if (l.length) ok(await sb.from("inc_tecnico_categorias").insert(l.map((categoria) => ({ email, categoria }))));
@@ -943,11 +946,14 @@
   }
   const casillasCats = (marcadas, attr = "") => CATS.map((c) => `<label class="check cat-chk" style="--c:${c.color}"><input type="checkbox" value="${c.id}" ${attr} ${marcadas.includes(c.id) ? "checked" : ""}> ${esc(c.nombre)}</label>`).join("");
   async function pintarCuentas() {
-    const l = await api.cuentas();
+    const [l, m365] = await Promise.all([api.cuentas(), api.coordM365()]);
     $("#admCuentas").innerHTML = `<table class="tabla-cuentas">${l.map((a) => `<tr><td>${esc(a.email)}${a.email === S.user.email ? " <small>(tú)</small>" : ""}</td>
       <td>${a.email === S.user.email ? ROLES[a.rol] || a.rol : `<select data-rol="${esc(a.email)}" aria-label="Rol de ${esc(a.email)}">${Object.entries(ROLES).map(([k, t]) => `<option value="${k}" ${k === a.rol ? "selected" : ""}>${t}</option>`).join("")}</select>`}</td>
       <td>${a.rol === "tecnico" ? `<div class="cats-fila" data-cats="${esc(a.email)}">${casillasCats(a.categorias || [])}</div><small class="pista">${a.categorias?.length ? "" : "Ninguna marcada: atiende todas."}</small>` : a.rol === "admin" ? "<small>Todas</small>" : ""}</td>
-      <td class="acciones-fila">${a.email === S.user.email ? "" : `<button class="btn mini peligro" type="button" data-quitar="${esc(a.email)}">Quitar</button>`}</td></tr>`).join("")}</table>`;
+      <td class="acciones-fila">${a.email === S.user.email ? "" : `<button class="btn mini peligro" type="button" data-quitar="${esc(a.email)}">Quitar</button>`}</td></tr>`).join("")}</table>
+      ${m365.length ? `<h4 style="margin:18px 0 4px">Coordinación por Microsoft 365</h4>
+      <p class="pista" style="margin:0 0 8px">Equipo Directivo y Comisión Pedagógica: entran solos como Coordinador/a y salen solos al dejar el grupo (se actualiza cada noche). Si se les da otro rol arriba, vale ese.</p>
+      <table class="tabla-cuentas">${m365.map((a) => `<tr><td>${esc(a.nombre || a.email)} <small>${esc(a.email)}</small></td><td>${ROLES.coordinador}</td></tr>`).join("")}</table>` : ""}`;
   }
 
   // ─── Modo prueba: incidencias de ejemplo ──────────────────────────────────

@@ -7,7 +7,7 @@ Web de incidencias con tickets para el colegio. Se entra con la cuenta de Micros
 | Rol | Qué puede hacer |
 |---|---|
 | **Profesorado** (resto de cuentas del colegio) | **Sin acceso** desde el 21-10-2026: al entrar ven «No tienes acceso». Si necesitan avisar de algo, se lo dicen a su coordinador/a. |
-| **Coordinador/a** | Además, crear incidencias. En las suyas puede añadir comentarios y fotos, y corregir los datos mientras siguen abiertas. |
+| **Coordinador/a** | Lo tienen solas las personas del **Equipo Directivo** y de la **Comisión Pedagógica** (grupos de Microsoft 365, `supabase/coordinacion-por-grupos.sql`); también se puede dar a mano. Además, crear incidencias. En las suyas puede añadir comentarios y fotos, y corregir los datos mientras siguen abiertas. |
 | **Técnico/a** | Además, atender las incidencias **de sus categorías** (informática, mobiliario, infraestructura, fungibles): estado, prioridad, responsable («Asignármela»), comentarios y fotos. Las categorías se marcan en cada técnico; sin ninguna marcada, atiende todas. |
 | **Administración** | Atiende todas las incidencias y tiene el menú *Administración*: **panel de control** (cada cifra se pulsa y lista sus incidencias, que se abren para gestionarlas), descarga para Excel, aulas y zonas, y quién tiene cada rol y qué categorías atiende cada técnico. Puede borrar incidencias. |
 
